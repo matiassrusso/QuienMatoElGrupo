@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+backend/.pytest_cache/
+backend/tests/__pycache__/
+backend/uvicorn.log
+backend/venv/
+frontend/.env.local
+frontend/node_modules/
+frontend/vite-dev.log
+frontend/vite-dev.err.log
+frontend/dist/
+.agents/
+skills-lock.json
