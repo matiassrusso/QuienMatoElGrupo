@@ -1,73 +1,56 @@
-# Quien Mato el Grupo
+# ¿Quién Mató el Grupo?
 
-Aplicacion para analizar exports de WhatsApp y detectar, con metricas, como se fue apagando la actividad de un grupo.
+Analytics de actividad para grupos de WhatsApp — descubrí quién dejó de participar y cuándo, a partir de tu export de chat.
+
+Activity analytics for WhatsApp groups — find out who went quiet and when, from your own chat export.
+
+---
+
+## Cómo funciona / How it works
+
+Subís el archivo `.zip` que exportás desde WhatsApp (Chat → Exportar chat) y la app procesa todo **en memoria**, sin guardar ni persistir ningún dato en ningún momento.
+
+Upload the `.zip` file exported from WhatsApp (Chat → Export chat) and the app processes everything **in memory**, with no data ever saved or persisted.
 
 ## Stack
 
-- `backend/`: FastAPI, parseo de `.zip` exportados por WhatsApp y calculo de metricas.
-- `frontend/`: React + TypeScript + Vite para subir el export y visualizar el informe.
+- **Backend:** Python, FastAPI
+- **Frontend:** React, TypeScript
+- **Visualización / Visualization:** Recharts
 
-## Requisitos
+## Funcionalidades / Features
 
-- Python 3.12
-- Node.js 20+
+- Ranking de inactividad con podio y tabla completa
+- Gráfico de actividad a lo largo del tiempo
+- Procesamiento 100% en memoria — privacidad garantizada, no se guarda ningún mensaje
 
-## Backend
+- Inactivity ranking with podium and full table
+- Activity chart over time
+- 100% in-memory processing — privacy by design, no message is ever stored
 
-```powershell
+## Correr el proyecto localmente / Running locally
+
+```bash
+# Backend
 cd backend
-python -m venv venv
-.\venv\Scripts\activate
 pip install -r requirements.txt
-python -m uvicorn main:app --reload --host 127.0.0.1 --port 8000
-```
+uvicorn main:app --reload
 
-## Frontend
-
-```powershell
+# Frontend
 cd frontend
-Copy-Item .env.example .env.local
 npm install
 npm run dev
 ```
 
-Si PowerShell bloquea `npm.ps1`, usa `npm.cmd run dev`.
+> Nota: verificá los comandos exactos contra los archivos de configuración reales del repo.
+> Note: check exact commands against the repo's actual config files.
 
-## Variables de entorno
+## Privacidad / Privacy
 
-El frontend lee `VITE_API_URL` desde `frontend/.env.local`.
+Ningún mensaje ni metadato del chat se almacena en disco o base de datos — todo el análisis ocurre en memoria durante la sesión y se descarta al finalizar.
 
-```env
-VITE_API_URL=http://localhost:8000
-```
+No message or chat metadata is stored to disk or database — all analysis happens in memory during the session and is discarded afterward.
 
-## Tests y verificaciones
+## Licencia / License
 
-### Backend
-
-```powershell
-cd backend
-.\venv\Scripts\python.exe -m unittest discover -s tests -v
-```
-
-### Frontend
-
-```powershell
-cd frontend
-npm run lint
-npm run build
-```
-
-## Flujo de uso
-
-1. Exporta un chat de WhatsApp con la opcion de incluir el archivo `.txt`.
-2. Comprime el export en un `.zip` si WhatsApp no lo entrega ya empaquetado.
-3. Sube el archivo desde la interfaz.
-4. Elige la ventana temporal a analizar.
-5. Revisa veredicto, timeline, heatmap y comparaciones.
-
-## Notas
-
-- El backend procesa el archivo en memoria; no persiste el contenido del chat.
-- La URL del backend ya no esta hardcodeada en el frontend: puede cambiarse con `VITE_API_URL`.
-- La suite de tests cubre parseo y el endpoint principal `/analizar`.
+MIT
