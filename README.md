@@ -1,3 +1,10 @@
+![Python](https://img.shields.io/badge/Python-3776AB?style=flat&logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=flat&logo=fastapi&logoColor=white)
+![React](https://img.shields.io/badge/React-61DAFB?style=flat&logo=react&logoColor=black)
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat&logo=typescript&logoColor=white)
+![Vite](https://img.shields.io/badge/Vite-646CFF?style=flat&logo=vite&logoColor=white)
+![Deploy](https://img.shields.io/badge/deploy-Railway%20%2B%20Vercel-black?style=flat)
+
 # ¿Quién Mató el Grupo?
 
 Analytics de actividad para grupos de WhatsApp — descubrí quién dejó de participar y cuándo, a partir de tu export de chat.
