@@ -11,6 +11,11 @@ Activity analytics for WhatsApp groups — find out who went quiet and when, fro
 
 ---
 
+## Demo en producción / Live demo
+
+- **App:** https://quien-mato-el-grupo.vercel.app/
+- **API:** https://quienmatoelgrupo-production.up.railway.app
+
 ## Cómo funciona / How it works
 
 Subís el archivo `.zip` que exportás desde WhatsApp (Chat → Exportar chat) y la app procesa todo **en memoria**, sin guardar ni persistir ningún dato en ningún momento.
