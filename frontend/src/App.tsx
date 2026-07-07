@@ -14,7 +14,7 @@ import AutopsyPanel from "./components/AutopsyPanel"
 import PlaybackPanel from "./components/PlaybackPanel"
 import ShareCard from "./components/ShareCard"
 import SectionNav from "./components/SectionNav"
-import CaseIntro from "./components/CaseIntro"
+import CaseHero from "./components/CaseHero"
 import GroupDynamics from "./components/GroupDynamics"
 import RevealSection from "./components/RevealSection"
 import { formatMembersSentence, formatShortDate, formatWeekdayName } from "./utils/format"
@@ -156,6 +156,32 @@ function App() {
     return () => observer.disconnect()
   }, [result])
 
+  if (!result) {
+    return (
+      <div className="app">
+        <CaseHero
+          pageTitle={pageTitle}
+          eyebrow={toneCopy.eyebrow}
+          subtitle={toneCopy.subtitle}
+          tone={tone}
+          onToneChange={setTone}
+          file={file}
+          onFileSelected={setFile}
+          rangeType={rangeType}
+          rangeValue={rangeValue}
+          onRangeChange={(type, value) => {
+            setRangeType(type)
+            setRangeValue(value)
+          }}
+          onAnalyze={handleAnalyze}
+          loading={loading}
+          rangeLabel={rangeLabel}
+        />
+        {error && <p className="error-msg">{error}</p>}
+      </div>
+    )
+  }
+
   return (
     <div className="app">
       <header className="hero">
@@ -220,8 +246,6 @@ function App() {
             </div>
           </div>
         </section>
-
-        {!result && !error && <CaseIntro />}
 
         {error && <p className="error-msg">{error}</p>}
 

@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Syne:wght@500;700;800&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Syne:wght@500;700;800&family=Space+Mono:wght@400;700&display=swap");
 
 :root {
   --bg: #07111f;
@@ -651,8 +651,7 @@ body::after {
 .app-footer,
 .autopsy-panel p,
 .phase-card p,
-.playback-note,
-.intro-card p {
+.playback-note {
   color: var(--muted);
   line-height: 1.74;
 }
@@ -690,8 +689,7 @@ body::after {
   line-height: 1.72;
 }
 
-.dynamics-grid,
-.intro-grid {
+.dynamics-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 16px;
@@ -740,7 +738,6 @@ body::after {
 
 .timeline-content strong,
 .phase-card strong,
-.intro-card strong,
 .share-card-stats strong,
 .playback-head strong {
   display: block;
@@ -755,8 +752,7 @@ body::after {
 .heatmap,
 .autopsy-panel,
 .playback-panel,
-.share-card,
-.case-intro {
+.share-card {
   display: grid;
   gap: 18px;
 }
@@ -917,8 +913,7 @@ body::after {
   gap: 12px;
 }
 
-.phase-card,
-.intro-card {
+.phase-card {
   padding: 18px;
   border-radius: 18px;
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -1205,8 +1200,7 @@ body::after {
   .share-card-actions,
   .playback-grid,
   .insight-grid,
-  .dynamics-grid,
-  .intro-grid {
+  .dynamics-grid {
     grid-template-columns: 1fr;
   }
 
@@ -1319,5 +1313,159 @@ body::after {
 
   .heatmap-day {
     font-size: 0.74rem;
+  }
+}
+
+/* Case hero -- landing previo al analisis (expediente) */
+
+.case-hero {
+  min-height: 100svh;
+  display: flex;
+  background: #151312;
+  color: #d8d2c8;
+  font-family: "Space Mono", ui-monospace, monospace;
+}
+
+.case-hero-tabs {
+  width: 64px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 60px;
+  background: #0e0d0c;
+}
+
+.case-hero-tab {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  text-align: center;
+  padding: 18px 0;
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: #6b6660;
+  border-right: 2px solid transparent;
+}
+
+.case-hero-tab-active {
+  color: #d8d2c8;
+  border-right: 2px solid #9a2c2c;
+  background: #151312;
+}
+
+.case-hero-page {
+  position: relative;
+  flex: 1;
+  padding: 8vh 7vw;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+  background-size: 3px 3px;
+}
+
+.case-hero-stamp {
+  position: absolute;
+  top: 60px;
+  right: 7vw;
+  border: 3px double #9a2c2c;
+  color: #9a2c2c;
+  padding: 8px 18px;
+  font-size: 12px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  transform: rotate(6deg);
+  opacity: 0.85;
+}
+
+.case-hero-case {
+  display: block;
+  font-size: 12px;
+  letter-spacing: 0.2em;
+  color: #9a2c2c;
+  margin-bottom: 18px;
+}
+
+.case-hero-title {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(2rem, 6vw, 4.5rem);
+  line-height: 1.05;
+  margin: 0 0 20px;
+  color: #f1ede4;
+  max-width: 16ch;
+}
+
+.case-hero-subtitle {
+  max-width: 60ch;
+  font-size: 14px;
+  line-height: 1.7;
+  color: #a29c92;
+  margin: 0 0 48px;
+}
+
+.case-hero-panel {
+  border: 1px solid #3a3632;
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-width: 640px;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.case-hero-panel-row {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.case-hero-panel-row > span {
+  font-size: 11px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: #6b6660;
+}
+
+.case-hero-analyze {
+  margin-top: 6px;
+  background: #9a2c2c;
+  color: #f1ede4;
+  border: none;
+  padding: 14px;
+  font-family: "Space Mono", ui-monospace, monospace;
+  font-size: 13px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.case-hero-analyze:disabled {
+  background: #3a3632;
+  color: #6b6660;
+  cursor: not-allowed;
+}
+
+.case-hero-divider {
+  border-top: 1px dashed #3a3632;
+  margin: 64px 0 40px;
+}
+
+.case-hero-teaser {
+  max-width: 70ch;
+  font-size: clamp(1rem, 2vw, 1.3rem);
+  line-height: 1.8;
+}
+
+.case-hero-teaser .word-dim {
+  color: #4a4640;
+  transition: color 0.15s linear;
+}
+
+.case-hero-teaser .word-lit {
+  color: #f1ede4;
+  transition: color 0.15s linear;
+}
+
+@media (max-width: 700px) {
+  .case-hero-tabs {
+    display: none;
   }
 }
