@@ -132,7 +132,12 @@ def _find_chat_txt(zf: zipfile.ZipFile) -> str | None:
 
 def extract_chat_text(zip_bytes: bytes) -> str:
     """Encuentra y decodifica el .txt del chat dentro del .zip, sin tocar disco."""
-    with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+    try:
+        zf = zipfile.ZipFile(io.BytesIO(zip_bytes))
+    except zipfile.BadZipFile as exc:
+        raise ValueError("El archivo subido no es un .zip valido.") from exc
+
+    with zf:
         name = _find_chat_txt(zf)
         if name is None:
             raise ValueError("El .zip no contiene ningun archivo .txt de chat de WhatsApp.")

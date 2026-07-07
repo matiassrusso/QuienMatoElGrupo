@@ -55,6 +55,13 @@ class AnalyzeApiTests(unittest.TestCase):
         self.assertEqual(context.exception.status_code, 400)
         self.assertIn("no contiene ningun archivo .txt", context.exception.detail)
 
+    def test_analizar_rejects_non_zip_file(self) -> None:
+        with self.assertRaises(HTTPException) as context:
+            self.run_analizar(b"esto no es un zip")
+
+        self.assertEqual(context.exception.status_code, 400)
+        self.assertIn("no es un .zip valido", context.exception.detail)
+
     def test_analizar_requires_positive_range_value_for_days(self) -> None:
         zip_bytes = make_chat_zip("21/06/26, 22:00 - Ana: Hola")
 
