@@ -13,32 +13,32 @@ function ActivityChart({ members }: Props) {
     <div className="chart-section">
       <ResponsiveContainer width="100%" height={height}>
         <BarChart data={data} layout="vertical" margin={{ top: 8, left: 92, right: 18, bottom: 8 }} barCategoryGap={8}>
-          <XAxis type="number" stroke="#8090a5" tickLine={false} axisLine={false} allowDecimals={false} />
+          <XAxis type="number" stroke="#a29c92" tickLine={false} axisLine={false} allowDecimals={false} />
           <YAxis
             type="category"
             dataKey="author"
             width={84}
-            stroke="#8090a5"
+            stroke="#a29c92"
             tickLine={false}
             axisLine={false}
             interval={0}
-            tick={{ fontSize: 12, fill: "#c2cbd8" }}
+            tick={{ fontSize: 12, fill: "#cfc7ba" }}
           />
           <Tooltip
-            cursor={{ fill: "rgba(255,255,255,0.04)" }}
+            cursor={{ fill: "rgba(216,210,200,0.06)" }}
             formatter={(value) => [`${value} mensajes`, "Actividad"]}
             contentStyle={{
-              background: "#111722",
-              border: "1px solid rgba(255,255,255,0.08)",
-              borderRadius: "14px",
+              background: "#1c1815",
+              border: "1px solid rgba(216,210,200,0.14)",
+              borderRadius: "4px",
               boxShadow: "0 18px 40px rgba(0,0,0,0.35)",
             }}
-            labelStyle={{ color: "#f5f7fb" }}
-            itemStyle={{ color: "#d8e0ea" }}
+            labelStyle={{ color: "#f1ede4" }}
+            itemStyle={{ color: "#cfc7ba" }}
           />
-          <Bar dataKey="messages_in_range" radius={[0, 8, 8, 0]}>
+          <Bar dataKey="messages_in_range" radius={[0, 3, 3, 0]}>
             {data.map((entry) => (
-              <Cell key={entry.author} fill={entry.messages_in_range === 0 ? "#8f3743" : "#c28b47"} />
+              <Cell key={entry.author} fill={entry.messages_in_range === 0 ? "#5c3535" : "#9a2c2c"} />
             ))}
           </Bar>
         </BarChart>

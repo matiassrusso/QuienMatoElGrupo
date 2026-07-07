@@ -2,7 +2,7 @@
 
 > Este archivo es para retomar el proyecto sin perder contexto. Lo voy actualizando a medida que avanzo. No es documentación de usuario (para eso está el README).
 
-Última actualización: 2026-07-07
+Última actualización: 2026-07-07 (sesión 3)
 
 ## Qué es esto
 
@@ -58,6 +58,33 @@ Plan de dirección:
 
 Esto solo cubre la pantalla previa al análisis. El header/resultados post-análisis sigue con el diseño viejo — es la Tarea #2.
 
+### Tarea #2 — reskin del resto de la app (en curso, no terminada)
+
+`App.css` (1300+ líneas) resultó estar armado con un montón de colores hardcodeados uno-por-uno (variantes de navy, cyan `#7cd6ff`, naranja `#f6a05d`, coral `#ff7a59`) en vez de un sistema de tokens — confirma la queja original de "flowcodeado". En vez de tocar cada regla a mano, hice:
+
+1. Reescribí los tokens de `:root` a la paleta del expediente (bg `#151312`, texto `#f1ede4`, acento único rojo `#9a2c2c`, radios de 2-6px en vez de 14-36px)
+2. Escribí un script Python (`reskin_css*.py`, quedaron en el tmp del job, no en el repo) que recorre el resto de `App.css` y remapea cualquier color no-neutro al mismo tono rojo vía HSV (rota el hue a 0°, conserva luminosidad, achica saturación de los que eran muy vívidos). Dos iteraciones fallidas antes de que funcionara bien:
+   - v1 usaba saturación HLS para detectar "es gris/neutro" → confundía blancos casi-puros (`#f7fbff`) con colores vívidos y los pintaba de rojo
+   - v2 con saturación HSV pero threshold de "spread" crudo → perdía navys oscuros reales (`rgba(6,16,30,..)`) por tener spread bajo en términos absolutos
+   - v3 (la que quedó) usa saturación HSV pura, sin threshold de spread — anduvo bien
+3. Reemplacé `font-family: "Syne"` por `Georgia, "Times New Roman", serif` en los 4 headers (h1/h2/h3/podium-medal), consistente con el serif de `CaseHero`
+4. Saqué el glassmorphism (`backdrop-filter: blur`), los blobs de glow decorativos (`.app::before/::after`) y el sheen diagonal (`::before` con gradiente) — no calzan con el look plano/mate del expediente
+5. Verificado con build+lint+test (verdes) y visualmente en navegador inyectando un resultado mock temporal en `App.tsx` (revertido antes de terminar) — veredicto, insights, dinámica de grupo, playback y share-card se ven coherentes con la paleta nueva
+
+**Sesión 3 (2026-07-07) — cierre de la tarea:**
+- `ActivityHeatmap.tsx:44-45` — reemplazado el naranja viejo (`rgba(246, 160, 93, ...)`) por `rgba(153, 72, 72, ...)`, el mismo rojo que ya usa la leyenda del heatmap en `App.css` (`.heatmap-legend-cell-*`). Ahora la escala de intensidad es consistente de punta a punta.
+- `ShareCard.tsx` — reescrito el SVG completo del share-card (fondo, paneles, textos, bordes) con la paleta del expediente (`#151312`/`#1c1815`/`#201b17` de fondo, acento `#9a2c2c`/`#c23a3a`, texto `#f1ede4`/`#a29c92`) y tipografías Georgia/Space Mono. Se eliminó el `<linearGradient>` decorativo del panel izquierdo (quedó fill plano `#201b17`), consistente con la decisión de sacar glassmorphism/sheen del resto de la app.
+- `ActivityChart.tsx` — ejes, tooltip y barras de Recharts migrados a los tokens: barras activas en `#9a2c2c`, barras en cero mensajes en un rojo apagado `#5c3535` (antes navy/amber sin relación con la paleta), tooltip con fondo/borde/radio acordes (`#1c1815`, `rgba(216,210,200,0.14)`, `4px`).
+- Verificación visual completa con datos reales: se generó un export sintético de WhatsApp (5 miembros, ~170 mensajes, patrón de desgaste con reactivación) y se corrió contra el backend local (`/analizar`) para obtener el JSON real de análisis. Se inyectó temporalmente en `App.tsx` (mismo hack de la sesión anterior, revertido con `git checkout` al terminar) para revisar en el navegador: hero, veredicto, stats, podio (`Podium`), dinámica de grupo, playback, timeline, comparación de miembros (`MemberCompare`), autopsia (`AutopsyPanel`), heatmap, chart, tabla completa (`MembersTable`) y placa de share. Todo coherente con la paleta roja/dossier.
+- `git checkout -- frontend/src/App.tsx` dejó ese archivo sin diff (el hack de QA nunca queda commiteado).
+- Build, lint y test (10/10) verdes después de los cambios.
+
+**Pendiente, no bloqueante:**
+- Los kickers (`.eyebrow`, `.section-kicker`, etc.) quedaron con Manrope; la idea original era pasarlos a Space Mono para eco con `CaseHero`. Cosmético, se puede hacer en cualquier momento.
+- `.heatmap-day` en `App.css` (color `#dce7f8`) quedó fuera del remap automático por estar justo debajo del umbral de saturación del script — es un azulado muy tenue, casi imperceptible, pero no es un token real.
+
+Con esto, la Tarea #2 (reskin del resto de la app) queda terminada. Falta commitear.
+
 ### Skills que estoy usando
 
 - `emil-design-eng` — polish de UI, decisiones de motion/animación
@@ -70,7 +97,7 @@ No hizo falta instalar ninguna skill nueva.
 ### TODO rediseño + IA
 
 - [x] Prototipo descartable del hero/concepto narrativo — usuario eligió variante C, ya foldeada en `CaseHero.tsx`
-- [ ] Plan componente por componente para el resto de la app (header post-análisis, Podium, MembersTable, ActivityHeatmap, etc.) en la estética de expediente
+- [x] Reskin del resto de la app — tokens/paleta/tipografía en `App.css` + `ActivityHeatmap.tsx`, `ShareCard.tsx`, `ActivityChart.tsx` migrados, verificado visualmente con datos reales. Falta commitear.
 - [ ] Elegir proveedor de LLM / conseguir API key (bloqueante para las dos features de IA de abajo)
 - [ ] IA integración 1: veredicto/causa probable redactado por LLM (hoy es texto por reglas en `backend/analysis.py`, función que genera `probable_cause`)
 - [ ] IA integración 2: "clon" del grupo — chat efímero in-page en la misma sesión, con el contexto ya parseado en memoria, sin persistencia (mantiene el modelo de privacidad actual)

@@ -41,8 +41,8 @@ function ActivityHeatmap({ cells }: Props) {
                   className="heatmap-cell"
                   title={`${day} ${String(hour).padStart(2, "0")}:00 - ${cell?.count ?? 0} mensajes`}
                   style={{
-                    background: `rgba(246, 160, 93, ${0.12 + intensity * 0.88})`,
-                    borderColor: intensity > 0 ? "rgba(246, 160, 93, 0.42)" : "rgba(255,255,255,0.08)",
+                    background: `rgba(153, 72, 72, ${0.12 + intensity * 0.88})`,
+                    borderColor: intensity > 0 ? "rgba(153, 72, 72, 0.42)" : "rgba(255,255,255,0.08)",
                   }}
                 />
               )
