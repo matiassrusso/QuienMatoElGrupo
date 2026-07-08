@@ -1,7 +1,8 @@
-"""Modelos Pydantic de request/response del endpoint /analizar."""
+"""Modelos Pydantic de request/response de los endpoints de la API."""
 from __future__ import annotations
 
 from datetime import date, datetime
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -70,3 +71,23 @@ class AnalysisResultOut(BaseModel):
     reactivation_attempts: int
     reactivation_leaders: list[ReactivationLeaderOut]
     phase_summary: list[PhaseSummaryOut]
+
+
+class VeredictoIARequest(BaseModel):
+    provider: Literal["anthropic", "openai"]
+    api_key: str
+    model: str | None = None
+    tone: Literal["forense", "neutral", "bardero"] = "forense"
+    group_name: str | None = None
+    total_members: int
+    total_messages_in_range: int
+    conversation_pattern: str
+    reactivation_attempts: int
+    top3: list[MemberStatsOut]
+    reactivation_leaders: list[ReactivationLeaderOut]
+    phase_summary: list[PhaseSummaryOut]
+    rule_based_cause: str
+
+
+class VeredictoIAResponse(BaseModel):
+    verdict: str

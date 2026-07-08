@@ -2,11 +2,15 @@ import io
 import asyncio
 import unittest
 import zipfile
+from unittest.mock import AsyncMock, patch
 
 from fastapi import HTTPException
 from starlette.datastructures import UploadFile
 
+import main
+from llm import LLMError
 from main import analizar
+from schemas import VeredictoIARequest
 
 
 def make_chat_zip(chat_text: str) -> bytes:
@@ -70,3 +74,45 @@ class AnalyzeApiTests(unittest.TestCase):
 
         self.assertEqual(context.exception.status_code, 400)
         self.assertIn("range_value debe ser un entero positivo", context.exception.detail)
+
+
+def make_veredicto_request(**overrides) -> VeredictoIARequest:
+    defaults = dict(
+        provider="anthropic",
+        api_key="fake-key",
+        tone="forense",
+        group_name="Los Pibes",
+        total_members=5,
+        total_messages_in_range=170,
+        conversation_pattern="Desgastado",
+        reactivation_attempts=1,
+        top3=[],
+        reactivation_leaders=[],
+        phase_summary=[],
+        rule_based_cause="La causa probable es desgaste gradual.",
+    )
+    defaults.update(overrides)
+    return VeredictoIARequest(**defaults)
+
+
+class VeredictoIAApiTests(unittest.TestCase):
+    def test_veredicto_ia_returns_llm_output(self) -> None:
+        payload = make_veredicto_request()
+
+        with patch.object(main, "call_llm", new=AsyncMock(return_value="Texto generado por la IA.")) as mocked:
+            response = asyncio.run(main.veredicto_ia(payload))
+
+        self.assertEqual(response.verdict, "Texto generado por la IA.")
+        mocked.assert_awaited_once()
+        called_provider = mocked.await_args.args[0]
+        self.assertEqual(called_provider, "anthropic")
+
+    def test_veredicto_ia_wraps_llm_error_as_502(self) -> None:
+        payload = make_veredicto_request()
+
+        with patch.object(main, "call_llm", new=AsyncMock(side_effect=LLMError("La API key no es valida."))):
+            with self.assertRaises(HTTPException) as context:
+                asyncio.run(main.veredicto_ia(payload))
+
+        self.assertEqual(context.exception.status_code, 502)
+        self.assertIn("no es valida", context.exception.detail)

@@ -2,7 +2,7 @@
 
 > Este archivo es para retomar el proyecto sin perder contexto. Lo voy actualizando a medida que avanzo. No es documentación de usuario (para eso está el README).
 
-Última actualización: 2026-07-07 (sesión 3)
+Última actualización: 2026-07-07 (sesión 3, cierre)
 
 ## Qué es esto
 
@@ -83,7 +83,32 @@ Esto solo cubre la pantalla previa al análisis. El header/resultados post-anál
 - Los kickers (`.eyebrow`, `.section-kicker`, etc.) quedaron con Manrope; la idea original era pasarlos a Space Mono para eco con `CaseHero`. Cosmético, se puede hacer en cualquier momento.
 - `.heatmap-day` en `App.css` (color `#dce7f8`) quedó fuera del remap automático por estar justo debajo del umbral de saturación del script — es un azulado muy tenue, casi imperceptible, pero no es un token real.
 
-Con esto, la Tarea #2 (reskin del resto de la app) queda terminada. Falta commitear.
+Con esto, la Tarea #2 (reskin del resto de la app) quedó terminada y **commiteada y pusheada** (commit `d88a5ba`, CI verde en GitHub).
+
+### Tarea #4 — veredicto redactado por IA (BYOK)
+
+Decisión de modelo de negocio (Tarea #3, cerrada): **cada persona que usa la web conecta su propia cuenta/token de IA** (BYOK - bring your own key). No hay key compartida del lado del servidor, no hay cuentas, no hay billing nuestro. Encaja con el pitch de privacidad existente ("todo se procesa en memoria, nada se persiste") — el backend sigue siendo 100% stateless, la key nunca se guarda en el servidor, solo se reenvía en el momento del pedido.
+
+Dato clave que simplificó todo: `Message.text` (contenido real de los mensajes) se parsea en `backend/parser.py` pero nunca sale hacia `AnalysisResult`/`AnalysisResultOut` — el análisis solo usa `author` + `timestamp`. Por eso el veredicto de IA no necesita mandar texto real del chat a ningún proveedor externo: alcanza con los mismos datos agregados que ya se calculan (stats por miembro, patrón, fases, causa por reglas como pista/referencia). Cero contenido real del chat viaja a un tercero.
+
+**Implementado:**
+- `backend/llm.py` (nuevo) — `call_llm(provider, api_key, model, system_prompt, user_prompt)`, dispatch simple a Anthropic (`/v1/messages`) o OpenAI (`/v1/chat/completions`) vía `httpx`. Mapea 401 → "la key no es válida", otros errores (429, 5xx, etc.) incluyen el `error.message` real del proveedor vía `_extract_error_message()`. Nunca loguea la key ni el payload.
+- `backend/schemas.py` — `VeredictoIARequest`/`VeredictoIAResponse`.
+- `backend/main.py` — nuevo endpoint `POST /veredicto-ia`, arma el prompt a partir de los datos agregados (`build_verdict_prompt`) y devuelve el texto generado. Errores del proveedor → HTTP 502.
+- `backend/requirements.txt` — agregado `httpx==0.28.1`.
+- Tests nuevos en `backend/tests/test_api.py` (`VeredictoIAApiTests`): mockean `call_llm`, sin llamadas reales a la red.
+- `frontend/src/aiSettings.ts` (nuevo) — `loadAISettings`/`saveAISettings` sobre `localStorage` (key `qmeg_ai_settings`), reusable a futuro por el clon del grupo.
+- `frontend/src/api.ts` — `generarVeredictoIA(settings, result, tone)`.
+- `frontend/src/components/AIVerdict.tsx` (nuevo) — formulario (proveedor/key/modelo opcional) con disclaimer de privacidad visible, botón "Generar veredicto con IA" una vez configurado, estados de loading/error. Montado en `App.tsx` justo después de `VerdictPanel`.
+- CSS nuevo en `App.css` (`.ai-verdict*`) reusando los tokens existentes (`--panel`, `--accent`, `--radius-*`), sin inventar paleta nueva.
+
+**Verificado end-to-end en el navegador (dos rondas):**
+1. Con una key falsa: frontend guarda en localStorage → llama al backend local → backend llama a la API real de Anthropic → recibe 401 → lo traduce a "La API key de Anthropic no es válida." → se muestra en la UI. Confirmado que la key persiste entre reloads (no vuelve a pedir el formulario).
+2. Con una key real del usuario (OpenAI): el pedido llegó a devolver **429** ("OpenAI devolvio un error (429)."). El mensaje original no incluía el detalle del proveedor (cuota agotada vs. rate limit vs. otra cosa), así que se mejoró `backend/llm.py` con `_extract_error_message()` — extrae `error.message` del cuerpo JSON de la respuesta (formato común a Anthropic y OpenAI) y lo agrega al mensaje de error. Cubierto con test nuevo `backend/tests/test_llm.py` (3 casos: extrae mensaje anidado, devuelve `None` si el body no es JSON, devuelve `None` si falta la key `error`). **No se volvió a probar en el navegador tras este fix** (se cortó la sesión antes) — la próxima vez que se pruebe con una key real, el mensaje de 429/error debería traer el detalle real del proveedor.
+
+El camino feliz (respuesta exitosa del LLM, texto generado visible) todavía no se vio en pantalla — la key de OpenAI probada devolvió 429 antes de llegar a generar texto. Si se prueba de nuevo y el 429 persiste, es un tema de cuota/billing de esa cuenta de OpenAI, no del código.
+
+Build, lint y test (10/10 frontend, 13/13 backend) verdes. Falta commitear.
 
 ### Skills que estoy usando
 
@@ -97,14 +122,14 @@ No hizo falta instalar ninguna skill nueva.
 ### TODO rediseño + IA
 
 - [x] Prototipo descartable del hero/concepto narrativo — usuario eligió variante C, ya foldeada en `CaseHero.tsx`
-- [x] Reskin del resto de la app — tokens/paleta/tipografía en `App.css` + `ActivityHeatmap.tsx`, `ShareCard.tsx`, `ActivityChart.tsx` migrados, verificado visualmente con datos reales. Falta commitear.
-- [ ] Elegir proveedor de LLM / conseguir API key (bloqueante para las dos features de IA de abajo)
-- [ ] IA integración 1: veredicto/causa probable redactado por LLM (hoy es texto por reglas en `backend/analysis.py`, función que genera `probable_cause`)
-- [ ] IA integración 2: "clon" del grupo — chat efímero in-page en la misma sesión, con el contexto ya parseado en memoria, sin persistencia (mantiene el modelo de privacidad actual)
+- [x] Reskin del resto de la app — tokens/paleta/tipografía en `App.css` + `ActivityHeatmap.tsx`, `ShareCard.tsx`, `ActivityChart.tsx` migrados, verificado visualmente con datos reales. **Commiteado y pusheado** (`d88a5ba`).
+- [x] Elegir modelo de integración de IA — decidido BYOK (cada usuario conecta su propia key de Anthropic u OpenAI, sin cuenta/billing nuestro)
+- [x] IA integración 1: veredicto/causa probable redactado por LLM — endpoint `/veredicto-ia` + `AIVerdict.tsx`, verificado end-to-end (ver detalle arriba). Falta commitear.
+- [ ] IA integración 2: "clon" del grupo — chat efímero in-page en la misma sesión, con el contexto ya parseado en memoria, sin persistencia (mantiene el modelo de privacidad actual). **Pendiente una decisión de arquitectura propia** (ver abajo) antes de empezar a codear.
 - [ ] IA integración 3 (v2, después): bot de Telegram con el mismo clon. Requiere proceso corriendo 24/7 y persistir contexto — rompe el pitch actual de "todo en memoria", hay que decidir un modelo de privacidad nuevo cuando se aborde
 
 ## Ideas sueltas / por definir
 
-- No decidido: proveedor de IA (Anthropic/OpenAI/otro) ni manejo de API key en producción
+- **Decisión pendiente para el clon del grupo (Tarea #5):** a diferencia del veredicto, el clon necesita texto real de mensajes para sonar como el grupo (tono, chistes internos), no solo agregados. Como el backend no persiste nada entre requests, hay que elegir entre (a) re-subir el .zip en cada mensaje del chat (mantiene el "cero estado en el servidor" al 100%, pero re-parsear en cada mensaje es más pesado para el usuario) o (b) una sesión efímera en memoria con TTL (más fluido, pero introduce estado server-side por primera vez, aunque sea solo RAM). No decidido todavía.
 - No decidido: paleta final de acento (¿rojo/sangre por la temática, o algo menos literal como el lima de Hildén & Kaira?)
 - No decidido: si el "clon" imita el tono general del grupo o permite elegir "hablar como [miembro específico]"

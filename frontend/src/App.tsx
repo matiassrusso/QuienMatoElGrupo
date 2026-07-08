@@ -6,6 +6,7 @@ import Podium from "./components/Podium"
 import MembersTable from "./components/MembersTable"
 import ToneToggle, { type ToneMode } from "./components/ToneToggle"
 import VerdictPanel from "./components/VerdictPanel"
+import AIVerdict from "./components/AIVerdict"
 import InsightChips from "./components/InsightChips"
 import DeathTimeline from "./components/DeathTimeline"
 import MemberCompare from "./components/MemberCompare"
@@ -274,6 +275,7 @@ function App() {
             </div>
 
             <VerdictPanel result={result} tone={tone} />
+            <AIVerdict result={result} tone={tone} />
             <InsightChips insights={insights} />
             <GroupDynamics result={result} />
 
