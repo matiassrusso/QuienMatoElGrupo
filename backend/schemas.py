@@ -74,7 +74,7 @@ class AnalysisResultOut(BaseModel):
 
 
 class VeredictoIARequest(BaseModel):
-    provider: Literal["anthropic", "openai"]
+    provider: Literal["anthropic", "openai", "gemini", "groq"]
     api_key: str
     model: str | None = None
     tone: Literal["forense", "neutral", "bardero"] = "forense"

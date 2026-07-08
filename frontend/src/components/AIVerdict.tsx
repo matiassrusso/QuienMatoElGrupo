@@ -4,6 +4,13 @@ import { generarVeredictoIA } from "../api"
 import { loadAISettings, saveAISettings, type AIProvider, type AISettings } from "../aiSettings"
 import type { ToneMode } from "./ToneToggle"
 
+const PROVIDER_INFO: Record<AIProvider, { label: string; keyPlaceholder: string; modelPlaceholder: string }> = {
+  anthropic: { label: "Anthropic (Claude)", keyPlaceholder: "sk-ant-...", modelPlaceholder: "claude-haiku-4-5-20251001" },
+  openai: { label: "OpenAI (GPT)", keyPlaceholder: "sk-...", modelPlaceholder: "gpt-4o-mini" },
+  gemini: { label: "Google Gemini (gratis)", keyPlaceholder: "AIza...", modelPlaceholder: "gemini-2.5-flash-lite" },
+  groq: { label: "Groq (gratis)", keyPlaceholder: "gsk_...", modelPlaceholder: "llama-3.3-70b-versatile" },
+}
+
 interface Props {
   result: AnalysisResult
   tone: ToneMode
@@ -58,8 +65,11 @@ function AIVerdict({ result, tone }: Props) {
           <label className="ai-verdict-field">
             <span>Proveedor</span>
             <select value={provider} onChange={(event) => setProvider(event.target.value as AIProvider)}>
-              <option value="anthropic">Anthropic (Claude)</option>
-              <option value="openai">OpenAI (GPT)</option>
+              {Object.entries(PROVIDER_INFO).map(([value, info]) => (
+                <option key={value} value={value}>
+                  {info.label}
+                </option>
+              ))}
             </select>
           </label>
 
@@ -69,7 +79,7 @@ function AIVerdict({ result, tone }: Props) {
               type="password"
               value={apiKey}
               onChange={(event) => setApiKey(event.target.value)}
-              placeholder={provider === "anthropic" ? "sk-ant-..." : "sk-..."}
+              placeholder={PROVIDER_INFO[provider].keyPlaceholder}
               autoComplete="off"
             />
           </label>
@@ -80,7 +90,7 @@ function AIVerdict({ result, tone }: Props) {
               type="text"
               value={model}
               onChange={(event) => setModel(event.target.value)}
-              placeholder={provider === "anthropic" ? "claude-haiku-4-5-20251001" : "gpt-4o-mini"}
+              placeholder={PROVIDER_INFO[provider].modelPlaceholder}
               autoComplete="off"
             />
           </label>

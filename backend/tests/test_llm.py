@@ -1,8 +1,19 @@
+import asyncio
 import unittest
 
 import httpx
 
-from llm import _extract_error_message
+from llm import DEFAULT_MODELS, LLMError, _extract_error_message, call_llm
+
+
+class CallLlmDispatchTests(unittest.TestCase):
+    def test_raises_for_unknown_provider(self) -> None:
+        with self.assertRaises(LLMError):
+            asyncio.run(call_llm("unknown", "key", None, "sys", "user"))
+
+    def test_known_providers_have_default_models(self) -> None:
+        for provider in ("anthropic", "openai", "gemini", "groq"):
+            self.assertIn(provider, DEFAULT_MODELS)
 
 
 class ExtractErrorMessageTests(unittest.TestCase):

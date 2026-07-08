@@ -2,7 +2,7 @@
 
 > Este archivo es para retomar el proyecto sin perder contexto. Lo voy actualizando a medida que avanzo. No es documentación de usuario (para eso está el README).
 
-Última actualización: 2026-07-07 (sesión 3, cierre)
+Última actualización: 2026-07-08 (sesión 4)
 
 ## Qué es esto
 
@@ -92,8 +92,9 @@ Decisión de modelo de negocio (Tarea #3, cerrada): **cada persona que usa la we
 Dato clave que simplificó todo: `Message.text` (contenido real de los mensajes) se parsea en `backend/parser.py` pero nunca sale hacia `AnalysisResult`/`AnalysisResultOut` — el análisis solo usa `author` + `timestamp`. Por eso el veredicto de IA no necesita mandar texto real del chat a ningún proveedor externo: alcanza con los mismos datos agregados que ya se calculan (stats por miembro, patrón, fases, causa por reglas como pista/referencia). Cero contenido real del chat viaja a un tercero.
 
 **Implementado:**
-- `backend/llm.py` (nuevo) — `call_llm(provider, api_key, model, system_prompt, user_prompt)`, dispatch simple a Anthropic (`/v1/messages`) o OpenAI (`/v1/chat/completions`) vía `httpx`. Mapea 401 → "la key no es válida", otros errores (429, 5xx, etc.) incluyen el `error.message` real del proveedor vía `_extract_error_message()`. Nunca loguea la key ni el payload.
-- `backend/schemas.py` — `VeredictoIARequest`/`VeredictoIAResponse`.
+- `backend/llm.py` (nuevo) — `call_llm(provider, api_key, model, system_prompt, user_prompt)`, dispatch a Anthropic (`/v1/messages`), OpenAI/Groq (`/chat/completions`, mismo formato — comparten `_call_openai_compatible()`) y Gemini (`generateContent`, formato propio) vía `httpx`. Mapea 401 → "la key no es válida", otros errores (429, 5xx, etc.) incluyen el `error.message` real del proveedor vía `_extract_error_message()`. Nunca loguea la key ni el payload.
+- **Gemini y Groq agregados como proveedores BYOK** (sesión 4, 2026-07-08) — elegidos porque son los únicos con free tier diario real y sostenido (sin tarjeta): Gemini ~1000 req/día en `gemini-2.5-flash-lite`, Groq ~14400 req/día en `llama-3.3-70b-versatile` (defaults en `DEFAULT_MODELS`). Motivo: el usuario quiere que usar la IA del proyecto sea gratis para cualquiera que lo pruebe, y Anthropic/OpenAI no tienen free tier permanente (solo trial de $5 o nada).
+- `backend/schemas.py` — `VeredictoIARequest`/`VeredictoIAResponse`, `provider: Literal["anthropic", "openai", "gemini", "groq"]`.
 - `backend/main.py` — nuevo endpoint `POST /veredicto-ia`, arma el prompt a partir de los datos agregados (`build_verdict_prompt`) y devuelve el texto generado. Errores del proveedor → HTTP 502.
 - `backend/requirements.txt` — agregado `httpx==0.28.1`.
 - Tests nuevos en `backend/tests/test_api.py` (`VeredictoIAApiTests`): mockean `call_llm`, sin llamadas reales a la red.
@@ -106,9 +107,9 @@ Dato clave que simplificó todo: `Message.text` (contenido real de los mensajes)
 1. Con una key falsa: frontend guarda en localStorage → llama al backend local → backend llama a la API real de Anthropic → recibe 401 → lo traduce a "La API key de Anthropic no es válida." → se muestra en la UI. Confirmado que la key persiste entre reloads (no vuelve a pedir el formulario).
 2. Con una key real del usuario (OpenAI): el pedido llegó a devolver **429** ("OpenAI devolvio un error (429)."). El mensaje original no incluía el detalle del proveedor (cuota agotada vs. rate limit vs. otra cosa), así que se mejoró `backend/llm.py` con `_extract_error_message()` — extrae `error.message` del cuerpo JSON de la respuesta (formato común a Anthropic y OpenAI) y lo agrega al mensaje de error. Cubierto con test nuevo `backend/tests/test_llm.py` (3 casos: extrae mensaje anidado, devuelve `None` si el body no es JSON, devuelve `None` si falta la key `error`). **No se volvió a probar en el navegador tras este fix** (se cortó la sesión antes) — la próxima vez que se pruebe con una key real, el mensaje de 429/error debería traer el detalle real del proveedor.
 
-El camino feliz (respuesta exitosa del LLM, texto generado visible) todavía no se vio en pantalla — la key de OpenAI probada devolvió 429 antes de llegar a generar texto. Si se prueba de nuevo y el 429 persiste, es un tema de cuota/billing de esa cuenta de OpenAI, no del código.
+**Camino feliz verificado (sesión 4, 2026-07-08):** con una key real de Groq (`llama-3.3-70b-versatile`), el pedido llegó a generar el veredicto completo, visible en la UI. Cierra el pendiente de la sesión anterior (la key de OpenAI probada entonces daba 429 antes de llegar a texto). Gemini todavía no se probó con key real, solo el camino de error (backend arriba, lint/test/build verdes).
 
-Build, lint y test (10/10 frontend, 13/13 backend) verdes. Falta commitear.
+Build, lint y test (10/10 frontend, 15/15 backend) verdes.
 
 ### Skills que estoy usando
 
@@ -124,7 +125,7 @@ No hizo falta instalar ninguna skill nueva.
 - [x] Prototipo descartable del hero/concepto narrativo — usuario eligió variante C, ya foldeada en `CaseHero.tsx`
 - [x] Reskin del resto de la app — tokens/paleta/tipografía en `App.css` + `ActivityHeatmap.tsx`, `ShareCard.tsx`, `ActivityChart.tsx` migrados, verificado visualmente con datos reales. **Commiteado y pusheado** (`d88a5ba`).
 - [x] Elegir modelo de integración de IA — decidido BYOK (cada usuario conecta su propia key de Anthropic u OpenAI, sin cuenta/billing nuestro)
-- [x] IA integración 1: veredicto/causa probable redactado por LLM — endpoint `/veredicto-ia` + `AIVerdict.tsx`, verificado end-to-end (ver detalle arriba). Falta commitear.
+- [x] IA integración 1: veredicto/causa probable redactado por LLM — endpoint `/veredicto-ia` + `AIVerdict.tsx`, 4 proveedores (Anthropic, OpenAI, Gemini, Groq), camino feliz verificado end-to-end con Groq. Commiteado (`fa02ccc`); Gemini/Groq sin commitear todavía.
 - [ ] IA integración 2: "clon" del grupo — chat efímero in-page en la misma sesión, con el contexto ya parseado en memoria, sin persistencia (mantiene el modelo de privacidad actual). **Pendiente una decisión de arquitectura propia** (ver abajo) antes de empezar a codear.
 - [ ] IA integración 3 (v2, después): bot de Telegram con el mismo clon. Requiere proceso corriendo 24/7 y persistir contexto — rompe el pitch actual de "todo en memoria", hay que decidir un modelo de privacidad nuevo cuando se aborde
 
