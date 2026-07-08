@@ -11,3 +11,12 @@ frontend/vite-dev.err.log
 frontend/dist/
 .agents/
 skills-lock.json
+
+# notas privadas de trabajo (van a repo privado aparte, ver .git-private)
+PROJECT_STATUS.md
+DESIGN.md
+PRODUCT.md
+AGENTS.md
+plan-rediseno-datos-ia.md
+.impeccable/
+.git-private/
