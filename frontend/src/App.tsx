@@ -22,6 +22,7 @@ import { formatMembersSentence, formatShortDate, formatWeekdayName } from "./uti
 import "./App.css"
 
 const ActivityChart = lazy(() => import("./components/ActivityChart"))
+const ActivityHeatmap3D = lazy(() => import("./components/ActivityHeatmap3D"))
 
 function getRangeLabel(rangeType: RangeType, rangeValue: number) {
   if (rangeType === "24h") return "Ultimas 24 horas"
@@ -297,7 +298,7 @@ function App() {
               </RevealSection>
             </div>
 
-            <div className="results-grid two-column-grid">
+            <div className="results-grid">
               <RevealSection className="panel-section" id="timeline">
                 <div className="section-heading">
                   <span className="section-kicker">Caso</span>
@@ -311,7 +312,9 @@ function App() {
                   <span className="section-kicker">Patron</span>
                   <h2>Heatmap de actividad</h2>
                 </div>
-                <ActivityHeatmap cells={result.hourly_heatmap} />
+                <Suspense fallback={<ActivityHeatmap cells={result.hourly_heatmap} />}>
+                  <ActivityHeatmap3D cells={result.hourly_heatmap} />
+                </Suspense>
               </RevealSection>
             </div>
 

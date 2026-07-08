@@ -933,6 +933,41 @@ body::after {
   background: rgba(153, 72, 72, 0.92);
 }
 
+.heatmap3d {
+  position: relative;
+  height: 460px;
+}
+
+.heatmap3d-grid {
+  height: 100%;
+  display: flex;
+  align-items: center;
+}
+
+.heatmap3d-grid .heatmap {
+  width: 100%;
+}
+
+.heatmap3d-canvas {
+  position: absolute;
+  inset: 0;
+  background: var(--bg-soft);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  transition: opacity 900ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.heatmap3d-canvas.is-fading {
+  opacity: 0;
+  pointer-events: none;
+}
+
+@media (max-width: 768px) {
+  .heatmap3d {
+    height: auto;
+  }
+}
+
 .autopsy-panel details {
   padding: 15px 16px;
   border-radius: 3px;
