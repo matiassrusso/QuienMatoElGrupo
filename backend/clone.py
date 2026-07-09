@@ -212,9 +212,9 @@ def _format_sample(sample: list[list[Message]]) -> str:
 # recitar la muestra.
 _CONVERSATION_RULE = (
     "A partir de aca vas a charlar en vivo con una persona real. Respondele de forma directa y coherente a lo que "
-    "te dice -- no ignores el mensaje ni sueltes frases sacadas de los fragmentos de abajo sin relacion con lo que "
-    "te preguntan. Usa mensajes cortos, estilo WhatsApp (1-3 lineas), con el tono/vocabulario/muletillas que se ven "
-    "en esos fragmentos, pero conversando de verdad sobre lo que te dicen."
+    "te dice -- no ignores el mensaje ni sueltes frases sacadas de los fragmentos de arriba sin relacion con lo "
+    "que te preguntan. Usa mensajes cortos, estilo WhatsApp (1-3 lineas), con el tono/vocabulario/muletillas que "
+    "se ven en esos fragmentos, pero conversando de verdad sobre lo que te dicen."
 )
 
 # Bug real detectado por el usuario: le pidio que le resuelva un ejercicio de
@@ -230,26 +230,44 @@ _NOT_AN_ASSISTANT_RULE = (
     "humor, mandala a buscarlo en Google, cambiale el tema -- pero nunca cumplas el pedido literal."
 )
 
+# Otro bug real: el clon respondia coherente pero con jerga "argentina de
+# manual" inventada (ej. dijo "chimarrao", que ni siquiera es jerga
+# argentina) en vez del vocabulario especifico de ESE grupo. La instruccion
+# vieja pedia "imitar el tono" en abstracto, sin pedir explicitamente que
+# reuse palabras/frases textuales de la muestra -- un modelo mediocre cae en
+# el registro generico mas probable en vez de anclarse en el ejemplo real.
+_VOCABULARY_RULE = (
+    "Fijate bien en las palabras, apodos, frases hechas y jerga EXACTA que aparecen en los fragmentos de arriba, y "
+    "reusalas cuando tengan sentido en tu respuesta. No inventes jerga generica de otro lado que no salga de los "
+    "fragmentos (nada de modismos random tipo 'che boludo' de manual si el grupo no habla asi) -- el objetivo es "
+    "sonar como ESTE grupo especifico, no como un arquetipo generico de chat argentino."
+)
+
 
 def build_clone_system_prompt(sample: list[list[Message]], hablar_como: str | None, group_name: str | None) -> str:
     label = group_name or "el grupo"
     sample_block = _format_sample(sample)
+    rules = f"{_CONVERSATION_RULE}\n\n{_VOCABULARY_RULE}\n\n{_NOT_AN_ASSISTANT_RULE}"
 
     if hablar_como:
-        return (
+        intro = (
             f'Sos una simulacion de estilo de como escribe "{hablar_como}" en el chat de WhatsApp "{label}". Abajo '
             f'hay fragmentos reales de conversaciones donde {hablar_como} participa (separados por "---"), para '
-            "que aprendas su tono, vocabulario y muletillas -- son solo referencia de estilo, no la charla actual. "
+            "que aprendas su tono, vocabulario y muletillas -- son solo referencia de estilo, no la charla actual."
+        )
+        disclaimer = (
             f"Dejá siempre claro, si el contexto lo amerita, que sos una imitacion generada por IA y no la persona "
             f"real -- no inventes hechos, opiniones ni datos personales de {hablar_como} que no se desprendan del "
-            f"tono de los fragmentos.\n\n{_CONVERSATION_RULE}\n\n{_NOT_AN_ASSISTANT_RULE}\n\n"
-            f"Fragmentos reales con mensajes de {hablar_como}:\n{sample_block}"
+            f"tono de los fragmentos."
+        )
+        return (
+            f"{intro}\n\nFragmentos reales con mensajes de {hablar_como}:\n{sample_block}\n\n{rules}\n\n{disclaimer}"
         )
 
-    return (
+    intro = (
         f'Sos una simulacion de estilo del chat de WhatsApp grupal "{label}". Abajo hay fragmentos reales de '
         'conversaciones del grupo (separados por "---"), para que aprendas su tono, vocabulario y dinamica '
-        "colectiva -- son solo referencia de estilo, no la charla actual. No inventes hechos ni opiniones reales de "
-        f"nadie del grupo mas alla de lo que el tono de los fragmentos sugiere.\n\n{_CONVERSATION_RULE}\n\n"
-        f"{_NOT_AN_ASSISTANT_RULE}\n\nFragmentos reales de conversaciones del grupo:\n{sample_block}"
+        "colectiva -- son solo referencia de estilo, no la charla actual."
     )
+    disclaimer = "No inventes hechos ni opiniones reales de nadie del grupo mas alla de lo que el tono de los fragmentos sugiere."
+    return f"{intro}\n\nFragmentos reales de conversaciones del grupo:\n{sample_block}\n\n{rules}\n\n{disclaimer}"

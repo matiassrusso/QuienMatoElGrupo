@@ -181,6 +181,16 @@ class BuildCloneSystemPromptTests(unittest.TestCase):
             self.assertIn("no sos un asistente de proposito general", prompt)
             self.assertIn("NO lo hagas", prompt)
 
+    def test_prompt_demands_literal_vocabulary_from_sample(self) -> None:
+        # Bug real: el clon sonaba coherente pero con jerga argentina
+        # generica inventada, no la del grupo real.
+        sample = [[Message(author="Ana", timestamp=datetime(2026, 1, 1), text="dale")]]
+
+        prompt = build_clone_system_prompt(sample, None, "Los Pibes")
+
+        self.assertIn("jerga EXACTA", prompt)
+        self.assertIn("No inventes jerga generica", prompt)
+
     def test_hablar_como_mode_names_the_member_and_disclaims_simulation(self) -> None:
         sample = [[Message(author="Ana", timestamp=datetime(2026, 1, 1), text="dale")]]
         prompt = build_clone_system_prompt(sample, "Ana", "Los Pibes")
