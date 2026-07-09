@@ -53,6 +53,20 @@ class ReactivationLeaderOut(BaseModel):
     attempts: int
 
 
+class InteractionEdgeOut(BaseModel):
+    source: str
+    target: str
+    weight: float
+    avg_latency_seconds: float
+
+
+class InteractionGraphOut(BaseModel):
+    nodes: list[str]
+    edges: list[InteractionEdgeOut]
+    centrality: dict[str, float]
+    communities: list[list[str]]
+
+
 class AnalysisResultOut(BaseModel):
     group_name: str | None = None
     reference_date: datetime
@@ -71,6 +85,7 @@ class AnalysisResultOut(BaseModel):
     reactivation_attempts: int
     reactivation_leaders: list[ReactivationLeaderOut]
     phase_summary: list[PhaseSummaryOut]
+    interaction_graph: InteractionGraphOut
 
 
 class VeredictoIARequest(BaseModel):

@@ -103,6 +103,7 @@ async def analizar(
         reactivation_attempts=result.reactivation_attempts,
         reactivation_leaders=[asdict(item) for item in result.reactivation_leaders],
         phase_summary=[asdict(item) for item in result.phase_summary],
+        interaction_graph=asdict(result.interaction_graph),
     )
 
 

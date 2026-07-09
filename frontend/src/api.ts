@@ -53,6 +53,20 @@ export interface ReactivationLeader {
   attempts: number
 }
 
+export interface InteractionEdge {
+  source: string
+  target: string
+  weight: number
+  avg_latency_seconds: number
+}
+
+export interface InteractionGraphData {
+  nodes: string[]
+  edges: InteractionEdge[]
+  centrality: Record<string, number>
+  communities: string[][]
+}
+
 export interface AnalysisResult {
   group_name: string | null
   reference_date: string
@@ -71,6 +85,7 @@ export interface AnalysisResult {
   reactivation_attempts: number
   reactivation_leaders: ReactivationLeader[]
   phase_summary: PhaseSummary[]
+  interaction_graph: InteractionGraphData
 }
 
 export async function analizarChat(

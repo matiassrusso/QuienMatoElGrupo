@@ -9,6 +9,7 @@ import numpy as np
 import ruptures as rpt
 from dateutil.relativedelta import relativedelta
 
+from interaction_graph import InteractionGraph, build_interaction_graph
 from parser import Message
 
 RangeType = Literal["24h", "days", "weeks", "months"]
@@ -85,6 +86,7 @@ class AnalysisResult:
     reactivation_attempts: int
     reactivation_leaders: list[ReactivationLeader]
     phase_summary: list[PhaseSummary]
+    interaction_graph: InteractionGraph
 
 
 def resolve_range_start(reference_now: datetime, range_type: RangeType, range_value: int | None) -> datetime:
@@ -472,6 +474,9 @@ def analyze(
     conversation_pattern = infer_conversation_pattern(members, daily_snapshots, reactivation_attempts)
     probable_cause = infer_probable_cause(members, daily_snapshots, reactivation_attempts, conversation_pattern)
 
+    in_range_messages = [message for message in messages_sorted if range_start <= message.timestamp <= reference_now]
+    interaction_graph = build_interaction_graph(in_range_messages)
+
     return AnalysisResult(
         reference_date=reference_now,
         range_start=range_start,
@@ -489,4 +494,5 @@ def analyze(
         reactivation_attempts=reactivation_attempts,
         reactivation_leaders=reactivation_leaders,
         phase_summary=phase_summary,
+        interaction_graph=interaction_graph,
     )

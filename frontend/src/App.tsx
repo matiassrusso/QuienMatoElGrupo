@@ -11,6 +11,7 @@ import InsightChips from "./components/InsightChips"
 import DeathTimeline from "./components/DeathTimeline"
 import MemberCompare from "./components/MemberCompare"
 import ActivityHeatmap from "./components/ActivityHeatmap"
+import InteractionGraph from "./components/InteractionGraph"
 import AutopsyPanel from "./components/AutopsyPanel"
 import PlaybackPanel from "./components/PlaybackPanel"
 import ShareCard from "./components/ShareCard"
@@ -315,6 +316,16 @@ function App() {
                 <Suspense fallback={<ActivityHeatmap cells={result.hourly_heatmap} />}>
                   <ActivityHeatmap3D cells={result.hourly_heatmap} />
                 </Suspense>
+              </RevealSection>
+            </div>
+
+            <div className="results-grid">
+              <RevealSection className="panel-section">
+                <div className="section-heading">
+                  <span className="section-kicker">Vinculos</span>
+                  <h2>Quien le responde a quien</h2>
+                </div>
+                <InteractionGraph graph={result.interaction_graph} />
               </RevealSection>
             </div>
 
