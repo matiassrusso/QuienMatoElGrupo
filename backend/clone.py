@@ -39,6 +39,30 @@ WINDOW_SIZE = 8
 # elegida en el modo "hablar como X", para mostrar a que le esta respondiendo.
 CONTEXT_PADDING = 2
 
+# TPM/TPD reales de cada provider en su tier gratuito/inicial (investigado
+# sesion 6, fuentes de terceros -- no doc oficial, puede necesitar ajuste).
+# Determinan cuanto se puede "leer" de una sola vez en la pasada de
+# comprension inicial (ver build_reading_pass_prompt) sin que el pedido
+# falle o se coma el dia entero de cuota. Groq es por lejos el mas ajustado:
+# 12k tokens/minuto y apenas 100k tokens/dia en el free tier -- una lectura
+# de 30-40k tokens ahi ni siquiera entraria en un solo pedido. Gemini tiene
+# 250k TPM compartidos y ventana de 1M, mucho mas margen.
+
+# Los valores dejan margen real bajo el limite: la heuristica de 4
+# caracteres/token es aproximada (texto informal con acentos/emojis/marcas
+# invisibles de WhatsApp suele tokenizar mas denso que eso en la practica),
+# y al presupuesto hay que sumarle el prompt del "analista" y la respuesta
+# del modelo, no solo la muestra. Groq en particular no tiene margen para
+# errores de estimacion: 5000 tokens de entrada deja ~7000 de colchon sobre
+# el limite real de 12000 TPM.
+READING_PASS_TOKEN_BUDGET = {
+    "groq": 5000,
+    "gemini": 60000,
+    "anthropic": 20000,
+    "openai": 15000,
+}
+DEFAULT_READING_PASS_TOKEN_BUDGET = 5000  # provider desconocido: el mas conservador
+
 
 @dataclass
 class CloneSession:
@@ -49,6 +73,12 @@ class CloneSession:
     expires_at: datetime
     chat_history: list[dict[str, str]] = field(default_factory=list)
     message_count: int = 0
+    # Ficha de estilo generada una vez por modo (None = tono general, o el
+    # nombre de la persona en modo "hablar como X") -- ver
+    # build_reading_pass_prompt. Evita rehacer la lectura completa en cada
+    # mensaje.
+    persona_briefs: dict[str | None, str] = field(default_factory=dict)
+    persona_brief_failed: set[str | None] = field(default_factory=set)
 
 
 _sessions: dict[str, CloneSession] = {}
@@ -150,7 +180,12 @@ def _author_windows(candidates: list[Message], author: str, bucket_count: int) -
     return windows
 
 
-def sample_style_messages(messages: list[Message], hablar_como: str | None) -> list[list[Message]]:
+def sample_style_messages(
+    messages: list[Message],
+    hablar_como: str | None,
+    max_messages: int = MAX_SAMPLE_MESSAGES,
+    max_chars: int = MAX_SAMPLE_CHARS,
+) -> list[list[Message]]:
     """Fragmentos de conversacion real (few-shot) para el prompt del clon.
 
     Devuelve ventanas de varios mensajes consecutivos -- no lineas sueltas de
@@ -163,8 +198,10 @@ def sample_style_messages(messages: list[Message], hablar_como: str | None) -> l
     responde) es lo que le da ritmo y coherencia a la imitacion.
 
     No se manda el chat completo: caro y probablemente excede el contexto en
-    grupos grandes. Tamano acotado por MAX_SAMPLE_MESSAGES / MAX_SAMPLE_CHARS,
-    lo que se cumpla primero corta el muestreo.
+    grupos grandes. Tamano acotado por max_messages/max_chars (default: la
+    muestra chica de cada mensaje: MAX_SAMPLE_MESSAGES/MAX_SAMPLE_CHARS;
+    sample_for_reading_pass pasa un budget mucho mas grande para la lectura
+    inicial), lo que se cumpla primero corta el muestreo.
     """
     candidates = [
         message
@@ -174,7 +211,9 @@ def sample_style_messages(messages: list[Message], hablar_como: str | None) -> l
     if not candidates:
         return []
 
-    bucket_count = min(10, max(1, len(candidates) // 20))
+    desired_windows = max(1, max_messages // WINDOW_SIZE)
+    available_windows = max(1, len(candidates) // WINDOW_SIZE)
+    bucket_count = min(desired_windows, available_windows)
 
     if hablar_como is not None:
         windows = _author_windows(candidates, hablar_como, bucket_count)
@@ -188,10 +227,21 @@ def sample_style_messages(messages: list[Message], hablar_como: str | None) -> l
         sample.append(window)
         total_chars += sum(len(message.text) for message in window)
         total_messages += len(window)
-        if total_chars >= MAX_SAMPLE_CHARS or total_messages >= MAX_SAMPLE_MESSAGES:
+        if total_chars >= max_chars or total_messages >= max_messages:
             break
 
     return sample
+
+
+def sample_for_reading_pass(messages: list[Message], hablar_como: str | None, token_budget: int) -> list[list[Message]]:
+    """Muestra mucho mas grande que la de cada mensaje, para la pasada unica
+    de 'lectura' de la conversacion (ver build_reading_pass_prompt). El tope
+    sale del presupuesto de tokens del provider elegido (READING_PASS_TOKEN_BUDGET),
+    no de una constante fija -- asi se adapta a Groq (muy ajustado) o Gemini
+    (mucho mas margen) sin romper ninguno de los dos."""
+    max_chars = token_budget * 4  # heuristica gruesa (sin tokenizer real por provider): ~4 caracteres por token
+    max_messages = max(WINDOW_SIZE, token_budget // 6)  # ~6 tokens promedio por mensaje corto
+    return sample_style_messages(messages, hablar_como, max_messages=max_messages, max_chars=max_chars)
 
 
 def _format_sample(sample: list[list[Message]]) -> str:
@@ -212,9 +262,9 @@ def _format_sample(sample: list[list[Message]]) -> str:
 # recitar la muestra.
 _CONVERSATION_RULE = (
     "A partir de aca vas a charlar en vivo con una persona real. Respondele de forma directa y coherente a lo que "
-    "te dice -- no ignores el mensaje ni sueltes frases sacadas de los fragmentos de arriba sin relacion con lo "
-    "que te preguntan. Usa mensajes cortos, estilo WhatsApp (1-3 lineas), con el tono/vocabulario/muletillas que "
-    "se ven en esos fragmentos, pero conversando de verdad sobre lo que te dicen."
+    "te dice -- no ignores el mensaje ni sueltes frases sacadas de lo de arriba sin relacion con lo que te "
+    "preguntan. Usa mensajes cortos, estilo WhatsApp (1-3 lineas), con el tono/vocabulario/muletillas que se ven "
+    "arriba, pero conversando de verdad sobre lo que te dicen."
 )
 
 # Bug real detectado por el usuario: le pidio que le resuelva un ejercicio de
@@ -242,6 +292,72 @@ _VOCABULARY_RULE = (
     "fragmentos (nada de modismos random tipo 'che boludo' de manual si el grupo no habla asi) -- el objetivo es "
     "sonar como ESTE grupo especifico, no como un arquetipo generico de chat argentino."
 )
+
+
+_VOCABULARY_RULE_FROM_BRIEF = (
+    "Usa la jerga, apodos y frases especificas que menciona la ficha de arriba. No inventes modismos genericos que "
+    "no salgan de ahi -- el objetivo es sonar como ESTE grupo especifico, no como un arquetipo generico de chat."
+)
+
+
+def build_reading_pass_prompt(
+    sample: list[list[Message]], hablar_como: str | None, group_name: str | None
+) -> tuple[str, str]:
+    """System+user prompt para la pasada unica de "lectura" que resume una
+    muestra grande del chat en una ficha de estilo compacta (ver
+    CloneSession.persona_briefs). Se llama una sola vez por sesion y por
+    modo (no en cada mensaje) -- pedido explicito del usuario de que el
+    clon "se tome su tiempo y entienda la conversacion" antes de charlar,
+    en vez de solo pattern-matchear fragmentos sueltos en cada turno.
+    """
+    label = group_name or "el grupo"
+    sample_block = _format_sample(sample)
+
+    system_prompt = (
+        "Sos un analista de estilo conversacional. Te van a dar fragmentos reales de un chat de WhatsApp y tenes "
+        "que resumir, en un texto corto (maximo ~200 palabras), como habla ese grupo: jerga y palabras especificas "
+        "que usan, apodos, chistes internos o referencias que se repiten, muletillas, tono general (formal/informal, "
+        "que tipo de humor). Se concreto y especifico de ESTE grupo -- nada de generalidades tipo 'usan jerga "
+        "informal', dame ejemplos reales de palabras/frases que aparecen en los fragmentos. No resumas de que "
+        "hablan (el contenido), solo COMO hablan (el estilo)."
+    )
+
+    if hablar_como:
+        user_prompt = (
+            f'Fragmentos reales de "{label}" donde participa {hablar_como} (separados por "---"):\n\n{sample_block}'
+            f"\n\nResumime especificamente el estilo de {hablar_como}: su vocabulario, muletillas, tono particular."
+        )
+    else:
+        user_prompt = (
+            f'Fragmentos reales del chat grupal "{label}" (separados por "---"):\n\n{sample_block}\n\nResumime el '
+            "estilo colectivo del grupo (no el de una persona en particular)."
+        )
+
+    return system_prompt, user_prompt
+
+
+def build_clone_system_prompt_from_brief(persona_brief: str, hablar_como: str | None, group_name: str | None) -> str:
+    """Prompt por-mensaje una vez que ya existe la ficha de estilo (mas
+    barato que reenviar los fragmentos crudos en cada turno de la charla)."""
+    label = group_name or "el grupo"
+    rules = f"{_CONVERSATION_RULE}\n\n{_VOCABULARY_RULE_FROM_BRIEF}\n\n{_NOT_AN_ASSISTANT_RULE}"
+
+    if hablar_como:
+        intro = (
+            f'Sos una simulacion de estilo de como escribe "{hablar_como}" en el chat de WhatsApp "{label}". Esta '
+            f"es la ficha de estilo de {hablar_como}, generada a partir de mensajes reales suyos:\n\n{persona_brief}"
+            f"\n\nDejá siempre claro, si el contexto lo amerita, que sos una imitacion generada por IA y no la "
+            f"persona real -- no inventes hechos, opiniones ni datos personales de {hablar_como} que no se "
+            "desprendan de la ficha."
+        )
+    else:
+        intro = (
+            f'Sos una simulacion de estilo del chat de WhatsApp grupal "{label}". Esta es la ficha de estilo del '
+            f"grupo, generada a partir de mensajes reales:\n\n{persona_brief}\n\nNo inventes hechos ni opiniones "
+            "reales de nadie del grupo mas alla de lo que la ficha sugiere."
+        )
+
+    return f"{intro}\n\n{rules}"
 
 
 def build_clone_system_prompt(sample: list[list[Message]], hablar_como: str | None, group_name: str | None) -> str:

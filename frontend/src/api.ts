@@ -176,10 +176,19 @@ interface EnviarMensajeClonParams {
   hablarComo?: string | null
 }
 
-/** Consume el stream SSE de /clon-chat/mensaje y va llamando onChunk a medida
- * que llegan fragmentos de texto. Tira CloneSessionExpiredError si el token
- * ya no es valido, para que la UI lo distinga de un error generico. */
-export async function enviarMensajeClon(params: EnviarMensajeClonParams, onChunk: (text: string) => void): Promise<void> {
+interface EnviarMensajeClonCallbacks {
+  onChunk: (text: string) => void
+  /** Se dispara si el backend esta generando la ficha de estilo (primera vez
+   * por sesion/modo) antes de poder contestar -- tarda unos segundos mas de
+   * lo normal, conviene mostrar un estado distinto de "escribiendo". */
+  onReading?: () => void
+}
+
+/** Consume el stream SSE de /clon-chat/mensaje y va llamando a los
+ * callbacks a medida que llegan los eventos. Tira CloneSessionExpiredError
+ * si el token ya no es valido, para que la UI lo distinga de un error
+ * generico. */
+export async function enviarMensajeClon(params: EnviarMensajeClonParams, callbacks: EnviarMensajeClonCallbacks): Promise<void> {
   const res = await fetch(`${API_URL}/clon-chat/mensaje`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -223,7 +232,9 @@ export async function enviarMensajeClon(params: EnviarMensajeClonParams, onChunk
       const data = dataLine.slice("data: ".length)
 
       if (event === "chunk") {
-        onChunk(JSON.parse(data) as string)
+        callbacks.onChunk(JSON.parse(data) as string)
+      } else if (event === "reading") {
+        callbacks.onReading?.()
       } else if (event === "error") {
         throw new Error(JSON.parse(data) as string)
       }

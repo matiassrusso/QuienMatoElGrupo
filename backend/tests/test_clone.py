@@ -3,7 +3,7 @@ import io
 import unittest
 import zipfile
 from datetime import datetime, timedelta
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from fastapi import HTTPException
 from starlette.datastructures import UploadFile
@@ -13,13 +13,17 @@ import main
 from clone import (
     MAX_SAMPLE_CHARS,
     MAX_SAMPLE_MESSAGES,
+    READING_PASS_TOKEN_BUDGET,
     WINDOW_SIZE,
     build_clone_system_prompt,
+    build_reading_pass_prompt,
     create_session,
     get_session,
     record_exchange,
+    sample_for_reading_pass,
     sample_style_messages,
 )
+from llm import LLMError
 from parser import Message
 from schemas import ClonMensajeRequest
 
@@ -160,6 +164,57 @@ class SampleStyleMessagesTests(unittest.TestCase):
         self.assertEqual(sample_style_messages([], "Ana"), [])
 
 
+class SampleForReadingPassTests(unittest.TestCase):
+    def test_bigger_budget_yields_a_bigger_sample(self) -> None:
+        base = datetime(2026, 1, 1)
+        messages: list[Message] = []
+        # Suficientes mensajes como para que ni siquiera el budget mas chico
+        # (groq) se quede corto de datos -- si no, ambos terminan usando
+        # "todo lo que hay" y el test no puede distinguir los dos budgets.
+        for week in range(250):
+            messages += make_conversation(base, ["Ana", "Beto", "Caro"], 20, start_offset_hours=week * 24 * 7)
+
+        small = sample_for_reading_pass(messages, None, READING_PASS_TOKEN_BUDGET["groq"])
+        big = sample_for_reading_pass(messages, None, READING_PASS_TOKEN_BUDGET["gemini"])
+
+        small_messages = sum(len(window) for window in small)
+        big_messages = sum(len(window) for window in big)
+        # Groq (5000 tokens) tiene un presupuesto mucho mas ajustado que
+        # Gemini (60000) -- el mismo chat tiene que darle una muestra
+        # bastante mas chica, sin romper (ni superar el propio budget de Groq).
+        self.assertGreater(big_messages, small_messages)
+        self.assertLessEqual(small_messages, READING_PASS_TOKEN_BUDGET["groq"] // 6 + WINDOW_SIZE)
+
+    def test_uses_full_conversation_not_just_the_small_per_message_budget(self) -> None:
+        base = datetime(2026, 1, 1)
+        messages: list[Message] = []
+        for week in range(30):
+            messages += make_conversation(base, ["Ana", "Beto"], 20, start_offset_hours=week * 24 * 7)
+
+        reading_sample = sample_for_reading_pass(messages, None, READING_PASS_TOKEN_BUDGET["gemini"])
+        default_sample = sample_style_messages(messages, None)
+
+        reading_total = sum(len(window) for window in reading_sample)
+        default_total = sum(len(window) for window in default_sample)
+        self.assertGreater(reading_total, default_total)
+
+
+class BuildReadingPassPromptTests(unittest.TestCase):
+    def test_general_mode_asks_for_collective_style_summary(self) -> None:
+        sample = [[Message(author="Ana", timestamp=datetime(2026, 1, 1), text="dale")]]
+        system_prompt, user_prompt = build_reading_pass_prompt(sample, None, "Los Pibes")
+
+        self.assertIn("analista de estilo", system_prompt)
+        self.assertIn("Los Pibes", user_prompt)
+        self.assertIn("estilo colectivo", user_prompt)
+
+    def test_hablar_como_mode_asks_for_that_persons_style(self) -> None:
+        sample = [[Message(author="Ana", timestamp=datetime(2026, 1, 1), text="dale")]]
+        _system_prompt, user_prompt = build_reading_pass_prompt(sample, "Ana", "Los Pibes")
+
+        self.assertIn("estilo de Ana", user_prompt)
+
+
 class BuildCloneSystemPromptTests(unittest.TestCase):
     def test_general_mode_mentions_group_and_conversation_rule(self) -> None:
         sample = [[Message(author="Ana", timestamp=datetime(2026, 1, 1), text="dale")]]
@@ -220,10 +275,16 @@ async def _fake_stream_ok(*_args, **_kwargs):
 
 
 async def _fake_stream_error(*_args, **_kwargs):
-    from llm import LLMError
-
     raise LLMError("La API key no es valida.")
     yield ""  # pragma: no cover -- fuerza que sea un async generator
+
+
+def _patched_call_and_stream(call_llm_result="Ficha: hablan informal.", call_llm_side_effect=None, stream=_fake_stream_ok):
+    """Contexto combinado que mockea call_llm (usado por la pasada de
+    lectura) y stream_llm_chat (usado por la respuesta en si), para no
+    pegarle a la red real en los tests del endpoint."""
+    call_mock = AsyncMock(return_value=call_llm_result, side_effect=call_llm_side_effect)
+    return patch.object(main, "call_llm", new=call_mock), patch.object(main, "stream_llm_chat", new=stream), call_mock
 
 
 class ClonChatEndpointTests(unittest.TestCase):
@@ -241,7 +302,8 @@ class ClonChatEndpointTests(unittest.TestCase):
         payload = ClonMensajeRequest(token=session_response.token, mensaje="hola clon", provider="anthropic", api_key="fake")
 
         async def run():
-            with patch.object(main, "stream_llm_chat", new=_fake_stream_ok):
+            call_patch, stream_patch, _ = _patched_call_and_stream()
+            with call_patch, stream_patch:
                 streaming_response = await main.clon_chat_mensaje(payload)
                 return [chunk async for chunk in streaming_response.body_iterator]
 
@@ -259,16 +321,59 @@ class ClonChatEndpointTests(unittest.TestCase):
         payload = ClonMensajeRequest(token=session_response.token, mensaje="hola clon", provider="anthropic", api_key="fake")
 
         async def run():
-            with patch.object(main, "stream_llm_chat", new=_fake_stream_error):
+            call_patch, stream_patch, _ = _patched_call_and_stream(stream=_fake_stream_error)
+            with call_patch, stream_patch:
                 streaming_response = await main.clon_chat_mensaje(payload)
                 return [chunk async for chunk in streaming_response.body_iterator]
 
         frames = asyncio.run(run())
 
-        self.assertEqual(frames, ['event: error\ndata: "La API key no es valida."\n\n'])
+        self.assertEqual(frames[-1], 'event: error\ndata: "La API key no es valida."\n\n')
         # No se registra el intercambio si el proveedor fallo.
         session = get_session(session_response.token)
         self.assertEqual(session.message_count, 0)
+
+    def test_mensaje_emits_reading_event_and_caches_persona_brief(self) -> None:
+        session_response = make_session_with_zip("18/06/26, 09:00 - Ana: Buen dia\n19/06/26, 10:00 - Ana: Otra vez yo")
+        payload = ClonMensajeRequest(token=session_response.token, mensaje="hola", provider="groq", api_key="fake")
+
+        async def send():
+            call_patch, stream_patch, call_mock = _patched_call_and_stream()
+            with call_patch, stream_patch:
+                streaming_response = await main.clon_chat_mensaje(payload)
+                frames = [chunk async for chunk in streaming_response.body_iterator]
+            return frames, call_mock
+
+        first_frames, first_call_mock = asyncio.run(send())
+        self.assertEqual(first_frames[0], "event: reading\ndata: {}\n\n")
+        first_call_mock.assert_awaited_once()
+
+        session = get_session(session_response.token)
+        self.assertEqual(session.persona_briefs[None], "Ficha: hablan informal.")
+
+        # Segundo mensaje: la ficha ya esta cacheada, no se vuelve a leer.
+        second_frames, second_call_mock = asyncio.run(send())
+        self.assertNotIn("event: reading\ndata: {}\n\n", second_frames)
+        second_call_mock.assert_not_awaited()
+
+    def test_reading_pass_failure_falls_back_to_default_sample(self) -> None:
+        session_response = make_session_with_zip("18/06/26, 09:00 - Ana: Buen dia\n19/06/26, 10:00 - Ana: Otra vez yo")
+        payload = ClonMensajeRequest(token=session_response.token, mensaje="hola", provider="groq", api_key="fake")
+
+        async def send():
+            call_patch, stream_patch, _ = _patched_call_and_stream(call_llm_side_effect=LLMError("rate limited"))
+            with call_patch, stream_patch:
+                streaming_response = await main.clon_chat_mensaje(payload)
+                return [chunk async for chunk in streaming_response.body_iterator]
+
+        frames = asyncio.run(send())
+
+        # La charla sigue funcionando (fallback), no se corta por el error de lectura.
+        self.assertIn('event: chunk\ndata: "Hola "\n\n', frames)
+        session = get_session(session_response.token)
+        self.assertEqual(session.persona_briefs, {})
+        self.assertIn(None, session.persona_brief_failed)
+        self.assertEqual(session.message_count, 1)
 
     def test_mensaje_with_missing_token_raises_404(self) -> None:
         payload = ClonMensajeRequest(token="no-existe", mensaje="hola", provider="anthropic", api_key="fake")

@@ -11,11 +11,16 @@ from fastapi.responses import StreamingResponse
 
 from analysis import analyze
 from clone import (
+    DEFAULT_READING_PASS_TOKEN_BUDGET,
     MAX_MESSAGES_PER_SESSION,
+    READING_PASS_TOKEN_BUDGET,
     build_clone_system_prompt,
+    build_clone_system_prompt_from_brief,
+    build_reading_pass_prompt,
     create_session,
     get_session,
     record_exchange,
+    sample_for_reading_pass,
     sample_style_messages,
 )
 from llm import LLMError, call_llm, stream_llm_chat
@@ -177,11 +182,35 @@ async def clon_chat_mensaje(payload: ClonMensajeRequest):
     if payload.hablar_como is not None and payload.hablar_como not in session.authors:
         raise HTTPException(status_code=400, detail="Ese miembro no aparece en el chat subido.")
 
-    sample = sample_style_messages(session.messages, payload.hablar_como)
-    system_prompt = build_clone_system_prompt(sample, payload.hablar_como, session.group_name)
+    mode_key = payload.hablar_como
     history = session.chat_history + [{"role": "user", "content": payload.mensaje}]
 
     async def event_stream():
+        # Ficha de estilo: se genera una sola vez por sesion y por modo (no
+        # en cada mensaje) con una muestra mucho mas grande que la de cada
+        # turno -- pedido explicito del usuario de que el clon "se tome su
+        # tiempo y entienda la conversacion" antes de charlar. Si la pasada
+        # de lectura falla (ej. Groq rechaza el pedido por rate limit), cae
+        # al muestreo chico de siempre en vez de romper la charla.
+        if mode_key in session.persona_briefs:
+            system_prompt = build_clone_system_prompt_from_brief(session.persona_briefs[mode_key], mode_key, session.group_name)
+        elif mode_key in session.persona_brief_failed:
+            sample = sample_style_messages(session.messages, mode_key)
+            system_prompt = build_clone_system_prompt(sample, mode_key, session.group_name)
+        else:
+            yield "event: reading\ndata: {}\n\n"
+            budget = READING_PASS_TOKEN_BUDGET.get(payload.provider, DEFAULT_READING_PASS_TOKEN_BUDGET)
+            reading_sample = sample_for_reading_pass(session.messages, mode_key, budget)
+            reading_system, reading_user = build_reading_pass_prompt(reading_sample, mode_key, session.group_name)
+            try:
+                brief = await call_llm(payload.provider, payload.api_key, payload.model, reading_system, reading_user)
+                session.persona_briefs[mode_key] = brief
+                system_prompt = build_clone_system_prompt_from_brief(brief, mode_key, session.group_name)
+            except LLMError:
+                session.persona_brief_failed.add(mode_key)
+                sample = sample_style_messages(session.messages, mode_key)
+                system_prompt = build_clone_system_prompt(sample, mode_key, session.group_name)
+
         collected: list[str] = []
         try:
             async for chunk in stream_llm_chat(payload.provider, payload.api_key, payload.model, system_prompt, history):

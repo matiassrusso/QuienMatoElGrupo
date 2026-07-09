@@ -38,6 +38,7 @@ function GroupClone({ file }: Props) {
   const [streamingText, setStreamingText] = useState<string | null>(null)
   const [input, setInput] = useState("")
   const [sending, setSending] = useState(false)
+  const [reading, setReading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [sessionExpired, setSessionExpired] = useState(false)
 
@@ -90,13 +91,21 @@ function GroupClone({ file }: Props) {
     setSending(true)
     setError(null)
     setStreamingText("")
+    setReading(false)
 
     let acc = ""
     try {
-      await enviarMensajeClon({ token: session.token, mensaje: userText, settings, hablarComo }, (chunk) => {
-        acc += chunk
-        setStreamingText(acc)
-      })
+      await enviarMensajeClon(
+        { token: session.token, mensaje: userText, settings, hablarComo },
+        {
+          onChunk: (chunk) => {
+            acc += chunk
+            setReading(false)
+            setStreamingText(acc)
+          },
+          onReading: () => setReading(true),
+        },
+      )
       setMessages((prev) => [...prev, { role: "assistant", content: acc }])
       setStreamingText(null)
     } catch (err) {
@@ -110,6 +119,7 @@ function GroupClone({ file }: Props) {
       }
     } finally {
       setSending(false)
+      setReading(false)
     }
   }
 
@@ -233,7 +243,13 @@ function GroupClone({ file }: Props) {
         {streamingText !== null && (
           <div className="group-clone-bubble group-clone-bubble-assistant">
             <span className="group-clone-bubble-role">Clon</span>
-            {streamingText === "" ? <p className="group-clone-typing">escribiendo…</p> : <p>{streamingText}</p>}
+            {reading ? (
+              <p className="group-clone-typing">leyendo la conversación por primera vez, puede tardar unos segundos…</p>
+            ) : streamingText === "" ? (
+              <p className="group-clone-typing">escribiendo…</p>
+            ) : (
+              <p>{streamingText}</p>
+            )}
           </div>
         )}
       </div>
