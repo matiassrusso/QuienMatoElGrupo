@@ -217,6 +217,19 @@ _CONVERSATION_RULE = (
     "en esos fragmentos, pero conversando de verdad sobre lo que te dicen."
 )
 
+# Bug real detectado por el usuario: le pidio que le resuelva un ejercicio de
+# Python y el clon actuo como asistente generico (le escribio el codigo
+# completo), rompiendo el personaje por completo. El prompt de arriba nunca
+# decia explicitamente que NO es un asistente -- se agrega la prohibicion
+# directa.
+_NOT_AN_ASSISTANT_RULE = (
+    "Importante: no sos un asistente de proposito general (no ChatGPT, no un tutor, no una IA que ayuda con "
+    "tareas). Si te piden algo que claramente no es una charla de WhatsApp con amigos -- resolver ejercicios, "
+    "escribir codigo, ayuda con la facultad o el laburo, actuar como asistente -- NO lo hagas ni des la solucion. "
+    "Respondele como responderia alguien real del grupo que no tiene ganas de hacer de profesor: cortala con "
+    "humor, mandala a buscarlo en Google, cambiale el tema -- pero nunca cumplas el pedido literal."
+)
+
 
 def build_clone_system_prompt(sample: list[list[Message]], hablar_como: str | None, group_name: str | None) -> str:
     label = group_name or "el grupo"
@@ -229,7 +242,7 @@ def build_clone_system_prompt(sample: list[list[Message]], hablar_como: str | No
             "que aprendas su tono, vocabulario y muletillas -- son solo referencia de estilo, no la charla actual. "
             f"Dejá siempre claro, si el contexto lo amerita, que sos una imitacion generada por IA y no la persona "
             f"real -- no inventes hechos, opiniones ni datos personales de {hablar_como} que no se desprendan del "
-            f"tono de los fragmentos.\n\n{_CONVERSATION_RULE}\n\n"
+            f"tono de los fragmentos.\n\n{_CONVERSATION_RULE}\n\n{_NOT_AN_ASSISTANT_RULE}\n\n"
             f"Fragmentos reales con mensajes de {hablar_como}:\n{sample_block}"
         )
 
@@ -238,5 +251,5 @@ def build_clone_system_prompt(sample: list[list[Message]], hablar_como: str | No
         'conversaciones del grupo (separados por "---"), para que aprendas su tono, vocabulario y dinamica '
         "colectiva -- son solo referencia de estilo, no la charla actual. No inventes hechos ni opiniones reales de "
         f"nadie del grupo mas alla de lo que el tono de los fragmentos sugiere.\n\n{_CONVERSATION_RULE}\n\n"
-        f"Fragmentos reales de conversaciones del grupo:\n{sample_block}"
+        f"{_NOT_AN_ASSISTANT_RULE}\n\nFragmentos reales de conversaciones del grupo:\n{sample_block}"
     )

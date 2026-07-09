@@ -58,6 +58,20 @@ function GroupClone({ file }: Props) {
     }
   }
 
+  const handleExport = () => {
+    const groupLabel = session?.group_name ?? "el grupo"
+    const header = `Conversacion con el clon de "${groupLabel}" -- exportado el ${new Date().toLocaleString("es-AR")}\n\n`
+    const body = messages.map((message) => `${message.role === "user" ? "Vos" : "Clon"}: ${message.content}`).join("\n\n")
+    const blob = new Blob([header + body], { type: "text/plain;charset=utf-8" })
+    const url = URL.createObjectURL(blob)
+    const slug = groupLabel.replace(/[^a-z0-9]+/gi, "-").toLowerCase().replace(/(^-|-$)/g, "") || "grupo"
+    const link = document.createElement("a")
+    link.href = url
+    link.download = `clon-${slug}.txt`
+    link.click()
+    URL.revokeObjectURL(url)
+  }
+
   const handleSaveSettings = () => {
     if (!apiKey.trim()) return
     const nextSettings: AISettings = { provider, apiKey: apiKey.trim(), model: model.trim() || undefined }
@@ -194,6 +208,14 @@ function GroupClone({ file }: Props) {
         <button type="button" className="ai-verdict-link" onClick={() => setEditingSettings(true)}>
           Cambiar configuracion de IA
         </button>
+      )}
+
+      {messages.length > 0 && (
+        <div className="group-clone-chat-toolbar">
+          <button type="button" className="ai-verdict-link" onClick={handleExport}>
+            Exportar conversacion
+          </button>
+        </div>
       )}
 
       <div className="group-clone-chat">

@@ -1616,6 +1616,11 @@ body::after {
   flex-wrap: wrap;
 }
 
+.group-clone-chat-toolbar {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .group-clone-chat {
   display: grid;
   gap: 12px;

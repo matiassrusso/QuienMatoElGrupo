@@ -169,6 +169,18 @@ class BuildCloneSystemPromptTests(unittest.TestCase):
         self.assertIn("dinamica colectiva", prompt)
         self.assertIn("Respondele de forma directa y coherente", prompt)
 
+    def test_prompt_refuses_to_act_as_general_assistant(self) -> None:
+        # Bug real: le pidieron resolver un ejercicio de Python y el clon
+        # actuo como asistente generico, rompiendo el personaje.
+        sample = [[Message(author="Ana", timestamp=datetime(2026, 1, 1), text="dale")]]
+
+        general_prompt = build_clone_system_prompt(sample, None, "Los Pibes")
+        hablar_como_prompt = build_clone_system_prompt(sample, "Ana", "Los Pibes")
+
+        for prompt in (general_prompt, hablar_como_prompt):
+            self.assertIn("no sos un asistente de proposito general", prompt)
+            self.assertIn("NO lo hagas", prompt)
+
     def test_hablar_como_mode_names_the_member_and_disclaims_simulation(self) -> None:
         sample = [[Message(author="Ana", timestamp=datetime(2026, 1, 1), text="dale")]]
         prompt = build_clone_system_prompt(sample, "Ana", "Los Pibes")
