@@ -5,11 +5,18 @@ de privacidad en el frontend (GroupClone.tsx) y en el README.
 """
 from __future__ import annotations
 
+import re
 import secrets
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
 from parser import Message
+
+# Placeholders que WhatsApp deja cuando el mensaje es un adjunto sin texto
+# ("audio omitted", "image omitted", etc, a veces con un "@Autor " adelante
+# por una mencion). En un chat real llegan a ser 1 de cada 6 mensajes -- puro
+# ruido para el tono, asi que se descartan del muestreo de estilo.
+_OMITTED_ATTACHMENT_RE = re.compile(r"\bomitted$", re.IGNORECASE)
 
 # Vive solo en RAM del proceso: no sobrevive un restart ni escala a multiples
 # instancias/workers (no hay store compartido tipo Redis). Aceptable para el
@@ -25,6 +32,12 @@ MAX_MESSAGES_PER_SESSION = 30
 MAX_SAMPLE_MESSAGES = 50
 MAX_SAMPLE_CHARS = 6000
 MAX_EXCERPT_CHARS = 220
+
+# Tamano de cada "ventana" de contexto conversacional (ver sample_style_messages).
+WINDOW_SIZE = 8
+# Mensajes de contexto antes/despues de la primera aparicion de la persona
+# elegida en el modo "hablar como X", para mostrar a que le esta respondiendo.
+CONTEXT_PADDING = 2
 
 
 @dataclass
@@ -97,99 +110,133 @@ def _split_into_buckets(messages: list[Message], bucket_count: int) -> list[list
     return [messages[i : i + size] for i in range(0, len(messages), size)]
 
 
-def sample_style_messages(messages: list[Message], hablar_como: str | None) -> list[Message]:
-    """Muestra representativa de tono para el few-shot del clon.
+def _distinct_authors(window: list[Message]) -> int:
+    return len({message.author for message in window})
 
-    No se manda el chat completo en cada request: es caro y probablemente
-    excede el contexto en grupos grandes. El tamano de la muestra esta
-    acotado por MAX_SAMPLE_MESSAGES (~50 mensajes, en linea con "few-shot",
-    no "historial completo") y MAX_SAMPLE_CHARS (~6000 caracteres, ~1500
-    tokens) -- lo que se cumpla primero corta el muestreo.
+
+def _best_window(bucket: list[Message]) -> list[Message]:
+    """Dentro de una franja temporal, elige la ventana de WINDOW_SIZE
+    mensajes consecutivos con mas autores distintos -- un intercambio real,
+    no una racha de un solo autor."""
+    if not bucket:
+        return []
+    if len(bucket) <= WINDOW_SIZE:
+        return bucket
+    offsets = sorted({0, len(bucket) // 4, len(bucket) // 2, (3 * len(bucket)) // 4})
+    candidates = [bucket[offset : offset + WINDOW_SIZE] for offset in offsets]
+    return max(candidates, key=_distinct_authors)
+
+
+def _general_windows(candidates: list[Message], bucket_count: int) -> list[list[Message]]:
+    buckets = _split_into_buckets(candidates, bucket_count)
+    return [window for bucket in buckets if (window := _best_window(bucket))]
+
+
+def _author_windows(candidates: list[Message], author: str, bucket_count: int) -> list[list[Message]]:
+    """Para el modo 'hablar como X': ventanas centradas en apariciones de esa
+    persona, con un poco de contexto de quien le hablaba -- no solo sus
+    lineas sueltas, sino a que estaba respondiendo de verdad."""
+    buckets = _split_into_buckets(candidates, bucket_count)
+    windows: list[list[Message]] = []
+    for bucket in buckets:
+        first_index = next((index for index, message in enumerate(bucket) if message.author == author), None)
+        if first_index is None:
+            continue
+        start = max(0, first_index - CONTEXT_PADDING)
+        end = min(len(bucket), first_index + CONTEXT_PADDING + 1)
+        window = bucket[start:end]
+        if window:
+            windows.append(window)
+    return windows
+
+
+def sample_style_messages(messages: list[Message], hablar_como: str | None) -> list[list[Message]]:
+    """Fragmentos de conversacion real (few-shot) para el prompt del clon.
+
+    Devuelve ventanas de varios mensajes consecutivos -- no lineas sueltas de
+    distintos puntos del historial. Esto es deliberado: en un chat largo
+    (años de historia), muestrear mensajes individuales aislados produce una
+    "muestra" sin ninguna coherencia conversacional (ej: una linea de 2022
+    seguida de una de 2024, sin relacion entre si), y el modelo termina
+    citando fragmentos sueltos de la muestra en vez de responder de verdad a
+    lo que le dicen. Mostrarle intercambios reales (alguien dice algo, otro
+    responde) es lo que le da ritmo y coherencia a la imitacion.
+
+    No se manda el chat completo: caro y probablemente excede el contexto en
+    grupos grandes. Tamano acotado por MAX_SAMPLE_MESSAGES / MAX_SAMPLE_CHARS,
+    lo que se cumpla primero corta el muestreo.
     """
-    candidates = [message for message in messages if message.text.strip()]
-
-    if hablar_como is not None:
-        author_messages = [message for message in candidates if message.author == hablar_como]
-        return _sample_spread(author_messages)
-
-    # Modo general: reparte la muestra en franjas temporales iguales y, dentro
-    # de cada franja, alterna autores round-robin -- asi ni quien mas
-    # escribio ni el tramo final del chat dominan la muestra de tono.
+    candidates = [
+        message
+        for message in messages
+        if message.text.strip() and not _OMITTED_ATTACHMENT_RE.search(message.text.strip())
+    ]
     if not candidates:
         return []
 
-    bucket_count = min(10, max(1, len(candidates) // 5))
-    buckets = _split_into_buckets(candidates, bucket_count)
-    per_bucket_quota = max(1, MAX_SAMPLE_MESSAGES // len(buckets))
+    bucket_count = min(10, max(1, len(candidates) // 20))
 
-    sample: list[Message] = []
+    if hablar_como is not None:
+        windows = _author_windows(candidates, hablar_como, bucket_count)
+    else:
+        windows = _general_windows(candidates, bucket_count)
+
+    sample: list[list[Message]] = []
     total_chars = 0
-
-    for bucket in buckets:
-        by_author: dict[str, list[Message]] = {}
-        for message in bucket:
-            by_author.setdefault(message.author, []).append(message)
-
-        authors_cycle = list(by_author.keys())
-        taken_in_bucket = 0
-        while authors_cycle and taken_in_bucket < per_bucket_quota:
-            for author in list(authors_cycle):
-                queue = by_author[author]
-                if not queue:
-                    authors_cycle.remove(author)
-                    continue
-                message = queue.pop(0)
-                sample.append(message)
-                total_chars += len(message.text)
-                taken_in_bucket += 1
-                if taken_in_bucket >= per_bucket_quota or len(sample) >= MAX_SAMPLE_MESSAGES:
-                    break
-            if total_chars >= MAX_SAMPLE_CHARS or len(sample) >= MAX_SAMPLE_MESSAGES:
-                break
-        if total_chars >= MAX_SAMPLE_CHARS or len(sample) >= MAX_SAMPLE_MESSAGES:
+    total_messages = 0
+    for window in windows:
+        sample.append(window)
+        total_chars += sum(len(message.text) for message in window)
+        total_messages += len(window)
+        if total_chars >= MAX_SAMPLE_CHARS or total_messages >= MAX_SAMPLE_MESSAGES:
             break
 
-    sample.sort(key=lambda message: message.timestamp)
     return sample
 
 
-def _sample_spread(messages: list[Message]) -> list[Message]:
-    """Muestreo espaciado a lo largo del tiempo (no solo los ultimos
-    mensajes) -- usado para el modo 'hablar como X'."""
-    if not messages:
-        return []
-
-    step = max(1, len(messages) // MAX_SAMPLE_MESSAGES)
-    spread = messages[::step][:MAX_SAMPLE_MESSAGES]
-
-    result: list[Message] = []
-    total_chars = 0
-    for message in spread:
-        total_chars += len(message.text)
-        result.append(message)
-        if total_chars >= MAX_SAMPLE_CHARS:
-            break
-    return result
+def _format_sample(sample: list[list[Message]]) -> str:
+    if not sample:
+        return "(sin mensajes de muestra)"
+    blocks = [
+        "\n".join(f"{message.author}: {_excerpt(message.text)}" for message in window) for window in sample
+    ]
+    return "\n---\n".join(blocks)
 
 
-def build_clone_system_prompt(sample: list[Message], hablar_como: str | None, group_name: str | None) -> str:
+# Instruccion reforzada tras un bug real detectado con un grupo grande: con
+# la muestra vieja (lineas sueltas de años distintos, sin conversacion real)
+# el modelo respondia con frases inconexas, a veces citando casi textual una
+# linea de la muestra sin relacion con lo que se le preguntaba. Ahora la
+# muestra son fragmentos de charla real (ver sample_style_messages) y ademas
+# se le deja explicito que tiene que sostener una conversacion de verdad, no
+# recitar la muestra.
+_CONVERSATION_RULE = (
+    "A partir de aca vas a charlar en vivo con una persona real. Respondele de forma directa y coherente a lo que "
+    "te dice -- no ignores el mensaje ni sueltes frases sacadas de los fragmentos de abajo sin relacion con lo que "
+    "te preguntan. Usa mensajes cortos, estilo WhatsApp (1-3 lineas), con el tono/vocabulario/muletillas que se ven "
+    "en esos fragmentos, pero conversando de verdad sobre lo que te dicen."
+)
+
+
+def build_clone_system_prompt(sample: list[list[Message]], hablar_como: str | None, group_name: str | None) -> str:
     label = group_name or "el grupo"
-    sample_block = "\n".join(f"{message.author}: {_excerpt(message.text)}" for message in sample) or "(sin mensajes de muestra)"
+    sample_block = _format_sample(sample)
 
     if hablar_como:
         return (
-            f'Sos una simulacion de estilo de como escribe "{hablar_como}" en el chat de WhatsApp "{label}", basada '
-            "unicamente en el tono, vocabulario y muletillas que se ven en la siguiente muestra real de sus "
-            f"mensajes. Imita ese estilo al responder. Dejá siempre claro, si el contexto lo amerita, que sos una "
-            f"imitacion generada por IA y no la persona real -- no inventes hechos, opiniones ni datos personales "
-            f"de {hablar_como} que no se desprendan del tono de la muestra.\n\n"
-            f"Muestra de mensajes reales de {hablar_como}:\n{sample_block}"
+            f'Sos una simulacion de estilo de como escribe "{hablar_como}" en el chat de WhatsApp "{label}". Abajo '
+            f'hay fragmentos reales de conversaciones donde {hablar_como} participa (separados por "---"), para '
+            "que aprendas su tono, vocabulario y muletillas -- son solo referencia de estilo, no la charla actual. "
+            f"Dejá siempre claro, si el contexto lo amerita, que sos una imitacion generada por IA y no la persona "
+            f"real -- no inventes hechos, opiniones ni datos personales de {hablar_como} que no se desprendan del "
+            f"tono de los fragmentos.\n\n{_CONVERSATION_RULE}\n\n"
+            f"Fragmentos reales con mensajes de {hablar_como}:\n{sample_block}"
         )
 
     return (
-        f'Sos una simulacion de estilo del chat de WhatsApp grupal "{label}", basada unicamente en el tono, '
-        "vocabulario y dinamica que se ven en la siguiente muestra real de mensajes de varios miembros. Imita ese "
-        "estilo colectivo al responder (no el de una persona en particular) -- no inventes hechos ni opiniones "
-        "reales de nadie del grupo mas alla de lo que el tono de la muestra sugiere.\n\n"
-        f"Muestra de mensajes reales del grupo:\n{sample_block}"
+        f'Sos una simulacion de estilo del chat de WhatsApp grupal "{label}". Abajo hay fragmentos reales de '
+        'conversaciones del grupo (separados por "---"), para que aprendas su tono, vocabulario y dinamica '
+        "colectiva -- son solo referencia de estilo, no la charla actual. No inventes hechos ni opiniones reales de "
+        f"nadie del grupo mas alla de lo que el tono de los fragmentos sugiere.\n\n{_CONVERSATION_RULE}\n\n"
+        f"Fragmentos reales de conversaciones del grupo:\n{sample_block}"
     )

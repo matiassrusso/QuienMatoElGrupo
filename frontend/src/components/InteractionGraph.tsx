@@ -10,42 +10,77 @@ interface Point {
   y: number
 }
 
-const WIDTH = 640
-const HEIGHT = 400
+const BASE_WIDTH = 640
 const MARGIN = 56
+
+function canvasSize(nodeCount: number) {
+  // Con pocos nodos el tamaño base alcanza; con un grupo grande (10+
+  // personas) el layout necesita mas aire o las lineas se amontonan sin
+  // importar cuanto se pode -- se descubrio con un grupo real de 13
+  // personas, donde el tamaño fijo de antes daba una marana ilegible.
+  const width = Math.min(1100, Math.max(BASE_WIDTH, nodeCount * 68))
+  return { width, height: Math.round(width * 0.62) }
+}
 
 // Layout congelado (ver DESIGN.md: nada de simulacion de fuerza en vivo). Se
 // corre una simulacion tipo Fruchterman-Reingold en JS puro, de forma
 // sincronica, y se descartan las velocidades -- solo quedan las posiciones
-// finales. No hace falta d3-force para esto: son ~30 lineas de repulsion +
+// finales. No hace falta d3-force para esto: son ~40 lineas de repulsion +
 // resorte, y evita meter una dependencia nueva para calcular un layout que
 // se usa una unica vez.
-function layoutNodes(nodes: string[], edges: InteractionGraphData["edges"]): Map<string, Point> {
+function layoutNodes(
+  nodes: string[],
+  edges: InteractionGraphData["edges"],
+  communities: string[][],
+  width: number,
+  height: number,
+): Map<string, Point> {
   const n = nodes.length
   if (n === 0) return new Map()
-  if (n === 1) return new Map([[nodes[0], { x: WIDTH / 2, y: HEIGHT / 2 }]])
+  if (n === 1) return new Map([[nodes[0], { x: width / 2, y: height / 2 }]])
+
+  // Cada comunidad detectada tiene su propio centro de gravedad, repartidos
+  // en un circulo grande -- sin esto, todos los nodos convergen al mismo
+  // centro y las comunidades quedan superpuestas aunque esten bien
+  // separadas en los datos (el layout no "sabe" que existen).
+  const communityOf = new Map<string, number>()
+  communities.forEach((community, index) => {
+    community.forEach((author) => communityOf.set(author, index))
+  })
+  const communityCount = Math.max(communities.length, 1)
+  const clusterSpread = communityCount > 1 ? Math.min(width, height) * 0.3 : 0
+  const communityCenters = Array.from({ length: communityCount }, (_, index) => {
+    const angle = (2 * Math.PI * index) / communityCount
+    return {
+      x: width / 2 + clusterSpread * Math.cos(angle),
+      y: height / 2 + clusterSpread * Math.sin(angle),
+    }
+  })
+  const centerFor = (id: string) => communityCenters[communityOf.get(id) ?? 0]
 
   const positions = new Map<string, { x: number; y: number; vx: number; vy: number }>()
-  const startRadius = Math.min(WIDTH, HEIGHT) * 0.32
+  const startRadius = Math.min(width, height) * 0.14
   nodes.forEach((id, i) => {
+    const center = centerFor(id)
     const angle = (2 * Math.PI * i) / n
     positions.set(id, {
-      x: WIDTH / 2 + startRadius * Math.cos(angle),
-      y: HEIGHT / 2 + startRadius * Math.sin(angle),
+      x: center.x + startRadius * Math.cos(angle),
+      y: center.y + startRadius * Math.sin(angle),
       vx: 0,
       vy: 0,
     })
   })
 
   const maxWeight = Math.max(...edges.map((edge) => edge.weight), 1)
-  const springLength = Math.min(WIDTH, HEIGHT) * 0.3
-  const repulsion = 2400
+  const springLength = Math.min(width, height) * (communityCount > 1 ? 0.22 : 0.3)
+  const repulsion = 2600
 
-  for (let iteration = 0; iteration < 260; iteration++) {
+  for (let iteration = 0; iteration < 280; iteration++) {
     for (const id of nodes) {
       const node = positions.get(id)!
-      let fx = (WIDTH / 2 - node.x) * 0.008
-      let fy = (HEIGHT / 2 - node.y) * 0.008
+      const center = centerFor(id)
+      let fx = (center.x - node.x) * 0.012
+      let fy = (center.y - node.y) * 0.012
 
       for (const otherId of nodes) {
         if (otherId === id) continue
@@ -100,8 +135,8 @@ function layoutNodes(nodes: string[], edges: InteractionGraphData["edges"]): Map
   for (const id of nodes) {
     const node = positions.get(id)!
     result.set(id, {
-      x: MARGIN + ((node.x - minX) / spanX) * (WIDTH - MARGIN * 2),
-      y: MARGIN + ((node.y - minY) / spanY) * (HEIGHT - MARGIN * 2),
+      x: MARGIN + ((node.x - minX) / spanX) * (width - MARGIN * 2),
+      y: MARGIN + ((node.y - minY) / spanY) * (height - MARGIN * 2),
     })
   }
   return result
@@ -113,7 +148,11 @@ function formatLatency(seconds: number) {
 }
 
 function InteractionGraph({ graph }: Props) {
-  const positions = useMemo(() => layoutNodes(graph.nodes, graph.edges), [graph])
+  const { width, height } = canvasSize(graph.nodes.length)
+  const positions = useMemo(
+    () => layoutNodes(graph.nodes, graph.edges, graph.communities, width, height),
+    [graph, width, height],
+  )
 
   if (graph.nodes.length === 0) {
     return <p className="interaction-graph-empty">No hay suficientes mensajes para inferir vinculos en esta ventana.</p>
@@ -126,7 +165,7 @@ function InteractionGraph({ graph }: Props) {
 
   return (
     <div className="interaction-graph">
-      <svg className="interaction-graph-svg" viewBox={`0 0 ${WIDTH} ${HEIGHT}`} role="img" aria-label="Grafo de quien le responde a quien en el grupo">
+      <svg className="interaction-graph-svg" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Grafo de quien le responde a quien en el grupo">
         <defs>
           <marker id="ig-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
             <path className="interaction-graph-arrowhead" d="M0,0 L10,5 L0,10 z" />

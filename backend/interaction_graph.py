@@ -16,6 +16,15 @@ from parser import Message
 # una respuesta" es mas una convencion social que una propiedad del chat.
 DEFAULT_REPLY_WINDOW_SECONDS = 60 * 60
 
+# En un grupo activo casi todo el mundo termina respondiendole a todo el
+# mundo al menos una vez -- sin podar, el grafo es una maraña casi completa
+# e ilegible (probado con un grupo real de 13 personas: 142 de 156 vinculos
+# posibles). Se muestran solo los vinculos mas fuertes de cada persona, no
+# todos: mas fiel a "a quien le responde de verdad" que a "a quien le
+# respondio alguna vez". La centralidad y las comunidades se calculan sobre
+# el grafo completo (sin podar), para que no se distorsionen por el recorte.
+MAX_EDGES_PER_SOURCE = 2
+
 
 @dataclass
 class InteractionEdge:
@@ -136,7 +145,22 @@ def build_interaction_graph(
 
     return InteractionGraph(
         nodes=authors,
-        edges=edges,
+        edges=_prune_weak_edges(edges),
         centrality={author: round(score, 4) for author, score in centrality.items()},
         communities=communities,
     )
+
+
+def _prune_weak_edges(edges: list[InteractionEdge]) -> list[InteractionEdge]:
+    """Se queda con los MAX_EDGES_PER_SOURCE vinculos mas fuertes de cada
+    autor (ver comentario de la constante)."""
+    by_source: dict[str, list[InteractionEdge]] = {}
+    for edge in edges:
+        by_source.setdefault(edge.source, []).append(edge)
+
+    pruned = [
+        edge
+        for source_edges in by_source.values()
+        for edge in sorted(source_edges, key=lambda edge: -edge.weight)[:MAX_EDGES_PER_SOURCE]
+    ]
+    return sorted(pruned, key=lambda edge: (edge.source, -edge.weight))

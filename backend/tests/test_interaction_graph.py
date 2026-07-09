@@ -1,7 +1,7 @@
 import unittest
 from datetime import datetime, timedelta
 
-from interaction_graph import build_interaction_graph, compute_tau
+from interaction_graph import MAX_EDGES_PER_SOURCE, build_interaction_graph, compute_tau
 from parser import Message
 
 
@@ -81,6 +81,30 @@ class BuildInteractionGraphTests(unittest.TestCase):
         community_sets = [set(community) for community in graph.communities]
         self.assertIn({"A", "B"}, community_sets)
         self.assertIn({"C", "D"}, community_sets)
+
+    def test_prunes_to_strongest_edges_per_source(self) -> None:
+        # Con un grupo real de 13 personas, sin podar el grafo tenia 142 de
+        # 156 vinculos posibles -- ilegible. Solo deberian quedar los
+        # MAX_EDGES_PER_SOURCE vinculos mas fuertes de cada autor.
+        base = datetime(2026, 1, 1, 10, 0)
+        t = base
+        msgs = []
+        targets_with_counts = [("B", 10), ("C", 8), ("D", 6), ("E", 4), ("F", 2)]
+        for target, count in targets_with_counts:
+            for _ in range(count):
+                msgs.append(message("Hub", t))
+                t += timedelta(seconds=20)
+                msgs.append(message(target, t))
+                t += timedelta(seconds=20)
+            t += timedelta(hours=2)
+
+        graph = build_interaction_graph(msgs)
+
+        hub_edges = [edge for edge in graph.edges if edge.source == "Hub"]
+        self.assertLessEqual(len(hub_edges), MAX_EDGES_PER_SOURCE)
+        kept_targets = {edge.target for edge in hub_edges}
+        expected_order = [target for target, _count in targets_with_counts]
+        self.assertEqual(kept_targets, set(expected_order[:MAX_EDGES_PER_SOURCE]))
 
     def test_empty_messages_returns_empty_graph(self) -> None:
         graph = build_interaction_graph([])

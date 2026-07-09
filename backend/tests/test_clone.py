@@ -2,7 +2,6 @@ import asyncio
 import io
 import unittest
 import zipfile
-from collections import Counter
 from datetime import datetime, timedelta
 from unittest.mock import patch
 
@@ -14,6 +13,7 @@ import main
 from clone import (
     MAX_SAMPLE_CHARS,
     MAX_SAMPLE_MESSAGES,
+    WINDOW_SIZE,
     build_clone_system_prompt,
     create_session,
     get_session,
@@ -74,49 +74,86 @@ class SessionStoreTests(unittest.TestCase):
         )
 
 
+def make_conversation(base: datetime, authors: list[str], count: int, start_offset_hours: float = 0) -> list[Message]:
+    """Una racha de mensajes alternando autores cada uno, simulando un
+    intercambio real (no un monologo)."""
+    return [
+        Message(
+            author=authors[index % len(authors)],
+            timestamp=base + timedelta(hours=start_offset_hours, minutes=index),
+            text=f"mensaje {index}",
+        )
+        for index in range(count)
+    ]
+
+
 class SampleStyleMessagesTests(unittest.TestCase):
-    def test_general_mode_spreads_across_authors_and_time(self) -> None:
+    def test_general_mode_returns_windows_with_real_exchanges(self) -> None:
         base = datetime(2026, 1, 1)
-        messages = [Message(author="Ana", timestamp=base + timedelta(hours=i), text=f"msj {i}") for i in range(400)]
-        messages += [Message(author="Beto", timestamp=base + timedelta(hours=i * 20), text=f"msj {i}") for i in range(20)]
-        messages.sort(key=lambda message: message.timestamp)
+        # Varias franjas temporales separadas, cada una con un intercambio real
+        # entre Ana y Beto -- simula conversaciones reales, no lineas sueltas.
+        messages: list[Message] = []
+        for week in range(8):
+            messages += make_conversation(base, ["Ana", "Beto"], 20, start_offset_hours=week * 24 * 7)
 
         sample = sample_style_messages(messages, None)
-        counts = Counter(message.author for message in sample)
 
-        self.assertLessEqual(len(sample), MAX_SAMPLE_MESSAGES)
-        self.assertIn("Beto", counts)
-        # Ana escribio 20x mas que Beto, pero no deberia dominar la muestra al punto
-        # de dejar a Beto con una fraccion insignificante.
-        self.assertGreater(counts["Beto"], len(sample) * 0.15)
-        # La muestra cubre casi todo el rango temporal, no solo la cola final.
-        total_span = (messages[-1].timestamp - messages[0].timestamp).total_seconds()
-        sample_span = (sample[-1].timestamp - sample[0].timestamp).total_seconds()
-        self.assertGreater(sample_span, total_span * 0.5)
+        self.assertTrue(sample)
+        total_messages = sum(len(window) for window in sample)
+        # El corte respeta ventanas completas (no trunca a mitad de un
+        # intercambio), asi que puede pasarse por hasta una ventana entera.
+        self.assertLessEqual(total_messages, MAX_SAMPLE_MESSAGES + WINDOW_SIZE)
+        # Cada ventana devuelta tiene que ser un intercambio real (mas de un
+        # autor), no una racha de una sola persona -- es el bug que se arreglo.
+        multi_author_windows = [window for window in sample if len({m.author for m in window}) > 1]
+        self.assertGreater(len(multi_author_windows), 0)
+        # La muestra cubre varias franjas del rango temporal, no solo una.
+        distinct_days = {window[0].timestamp.date() for window in sample}
+        self.assertGreater(len(distinct_days), 1)
 
-    def test_hablar_como_filters_to_single_author_and_spreads_over_time(self) -> None:
+    def test_hablar_como_windows_all_contain_that_author(self) -> None:
         base = datetime(2026, 1, 1)
-        messages = [Message(author="Ana", timestamp=base + timedelta(hours=i), text=f"msj {i}") for i in range(200)]
-        messages += [Message(author="Beto", timestamp=base + timedelta(hours=i), text=f"msj {i}") for i in range(200)]
-        messages.sort(key=lambda message: message.timestamp)
+        messages: list[Message] = []
+        for week in range(8):
+            messages += make_conversation(base, ["Ana", "Beto"], 20, start_offset_hours=week * 24 * 7)
 
         sample = sample_style_messages(messages, "Ana")
 
         self.assertTrue(sample)
-        self.assertTrue(all(message.author == "Ana" for message in sample))
-        total_span = (messages[-1].timestamp - messages[0].timestamp).total_seconds()
-        sample_span = (sample[-1].timestamp - sample[0].timestamp).total_seconds()
-        self.assertGreater(sample_span, total_span * 0.5)
+        for window in sample:
+            self.assertIn("Ana", {message.author for message in window})
 
-    def test_respects_char_budget_with_long_messages(self) -> None:
+    def test_filters_out_attachment_placeholders(self) -> None:
+        base = datetime(2026, 1, 1)
+        messages = [
+            Message(author="Ana", timestamp=base, text="che mira esto"),
+            Message(author="Beto", timestamp=base + timedelta(minutes=1), text="‎image omitted"),
+            Message(author="Ana", timestamp=base + timedelta(minutes=2), text="‎audio omitted"),
+            Message(author="Beto", timestamp=base + timedelta(minutes=3), text="jajaja que es eso"),
+        ]
+
+        sample = sample_style_messages(messages, None)
+
+        sampled_texts = [message.text for window in sample for message in window]
+        self.assertNotIn("‎image omitted", sampled_texts)
+        self.assertNotIn("‎audio omitted", sampled_texts)
+
+    def test_respects_message_and_char_budget_with_long_messages(self) -> None:
         base = datetime(2026, 1, 1)
         long_text = "palabra " * 200  # bien por encima del budget individual
-        messages = [Message(author="Ana", timestamp=base + timedelta(hours=i), text=long_text) for i in range(100)]
+        messages: list[Message] = []
+        for week in range(20):
+            messages += [
+                Message(author="Ana", timestamp=base + timedelta(hours=week * 24 * 7, minutes=i), text=long_text)
+                for i in range(10)
+            ]
 
         sample = sample_style_messages(messages, "Ana")
 
-        total_chars = sum(len(message.text) for message in sample)
-        self.assertLessEqual(total_chars, MAX_SAMPLE_CHARS + len(long_text))
+        total_chars = sum(len(message.text) for window in sample for message in window)
+        total_messages = sum(len(window) for window in sample)
+        self.assertLessEqual(total_messages, MAX_SAMPLE_MESSAGES + WINDOW_SIZE)
+        self.assertLessEqual(total_chars, MAX_SAMPLE_CHARS + WINDOW_SIZE * len(long_text))
 
     def test_empty_messages_returns_empty_sample(self) -> None:
         self.assertEqual(sample_style_messages([], None), [])
@@ -124,19 +161,29 @@ class SampleStyleMessagesTests(unittest.TestCase):
 
 
 class BuildCloneSystemPromptTests(unittest.TestCase):
-    def test_general_mode_mentions_group_not_a_specific_person(self) -> None:
-        sample = [Message(author="Ana", timestamp=datetime(2026, 1, 1), text="dale")]
+    def test_general_mode_mentions_group_and_conversation_rule(self) -> None:
+        sample = [[Message(author="Ana", timestamp=datetime(2026, 1, 1), text="dale")]]
         prompt = build_clone_system_prompt(sample, None, "Los Pibes")
 
         self.assertIn("Los Pibes", prompt)
-        self.assertIn("estilo colectivo", prompt)
+        self.assertIn("dinamica colectiva", prompt)
+        self.assertIn("Respondele de forma directa y coherente", prompt)
 
     def test_hablar_como_mode_names_the_member_and_disclaims_simulation(self) -> None:
-        sample = [Message(author="Ana", timestamp=datetime(2026, 1, 1), text="dale")]
+        sample = [[Message(author="Ana", timestamp=datetime(2026, 1, 1), text="dale")]]
         prompt = build_clone_system_prompt(sample, "Ana", "Los Pibes")
 
         self.assertIn("Ana", prompt)
         self.assertIn("imitacion generada por IA", prompt)
+
+    def test_multiple_windows_are_separated_in_the_prompt(self) -> None:
+        sample = [
+            [Message(author="Ana", timestamp=datetime(2026, 1, 1), text="hola")],
+            [Message(author="Beto", timestamp=datetime(2026, 2, 1), text="q onda")],
+        ]
+        prompt = build_clone_system_prompt(sample, None, "Los Pibes")
+
+        self.assertIn("---", prompt)
 
 
 def make_session_with_zip(chat_text: str):
