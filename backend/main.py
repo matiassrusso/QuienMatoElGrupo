@@ -1,16 +1,32 @@
 """API de Quien Mato el Grupo; todo el procesamiento ocurre en memoria."""
 from __future__ import annotations
 
+import json
 from dataclasses import asdict
 from typing import Literal, Optional
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 
 from analysis import analyze
-from llm import LLMError, call_llm
+from clone import (
+    MAX_MESSAGES_PER_SESSION,
+    build_clone_system_prompt,
+    create_session,
+    get_session,
+    record_exchange,
+    sample_style_messages,
+)
+from llm import LLMError, call_llm, stream_llm_chat
 from parser import extract_chat_text, extract_group_name, parse_messages
-from schemas import AnalysisResultOut, VeredictoIARequest, VeredictoIAResponse
+from schemas import (
+    AnalysisResultOut,
+    ClonIniciarResponse,
+    ClonMensajeRequest,
+    VeredictoIARequest,
+    VeredictoIAResponse,
+)
 
 app = FastAPI(title="Quien Mato el Grupo")
 
@@ -117,3 +133,65 @@ async def veredicto_ia(payload: VeredictoIARequest):
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     return VeredictoIAResponse(verdict=verdict)
+
+
+@app.post("/clon-chat/iniciar", response_model=ClonIniciarResponse)
+async def clon_chat_iniciar(file: UploadFile = File(...)):
+    contents = await file.read()
+
+    try:
+        chat_text = extract_chat_text(contents)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    messages = parse_messages(chat_text)
+    group_name = extract_group_name(chat_text)
+
+    if not messages:
+        raise HTTPException(status_code=422, detail="No se encontraron mensajes validos en el chat exportado.")
+
+    token = create_session(messages, group_name)
+    session = get_session(token)
+    assert session is not None  # recien creada, no puede haber expirado
+
+    return ClonIniciarResponse(
+        token=token,
+        authors=session.authors,
+        group_name=group_name,
+        message_count=len(messages),
+    )
+
+
+@app.post("/clon-chat/mensaje")
+async def clon_chat_mensaje(payload: ClonMensajeRequest):
+    session = get_session(payload.token)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Tu sesion expiro. Volve a subir el chat para seguir charlando.")
+
+    if session.message_count >= MAX_MESSAGES_PER_SESSION:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Llegaste al limite de {MAX_MESSAGES_PER_SESSION} mensajes para esta sesion. Volve a subir el chat para seguir.",
+        )
+
+    if payload.hablar_como is not None and payload.hablar_como not in session.authors:
+        raise HTTPException(status_code=400, detail="Ese miembro no aparece en el chat subido.")
+
+    sample = sample_style_messages(session.messages, payload.hablar_como)
+    system_prompt = build_clone_system_prompt(sample, payload.hablar_como, session.group_name)
+    history = session.chat_history + [{"role": "user", "content": payload.mensaje}]
+
+    async def event_stream():
+        collected: list[str] = []
+        try:
+            async for chunk in stream_llm_chat(payload.provider, payload.api_key, payload.model, system_prompt, history):
+                collected.append(chunk)
+                yield f"event: chunk\ndata: {json.dumps(chunk)}\n\n"
+        except LLMError as exc:
+            yield f"event: error\ndata: {json.dumps(str(exc))}\n\n"
+            return
+
+        record_exchange(payload.token, payload.mensaje, "".join(collected))
+        yield "event: done\ndata: {}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")

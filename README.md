@@ -61,6 +61,12 @@ Ningún mensaje ni metadato del chat se almacena en disco o base de datos — to
 
 No message or chat metadata is stored to disk or database — all analysis happens in memory during the session and is discarded afterward.
 
+### Sobre el clon conversacional (opcional) / About the conversational clone (optional)
+
+La función de "clon del grupo" es la única excepción a lo anterior: para que el clon suene como el grupo (tono, chistes internos, muletillas), necesita texto real de los mensajes, no solo metadatos agregados. Al usarla, tu chat se guarda temporalmente en la memoria RAM del backend (nunca en disco) por un tiempo limitado y se borra automáticamente al expirar. El resto de la app (análisis, veredicto, heatmap, grafo de interacción) sigue siendo 100% in-memory-y-descartado-al-instante, sin excepción.
+
+The "group clone" feature is the one exception to the above: to sound like the group (tone, inside jokes, verbal tics), it needs real message text, not just aggregated metadata. When you use it, your chat is temporarily kept in the backend's RAM (never on disk) for a limited time and is automatically discarded on expiry. The rest of the app (analysis, verdict, heatmap, interaction graph) remains 100% in-memory-and-discarded-instantly, no exception.
+
 ## Licencia / License
 
 MIT

@@ -142,3 +142,91 @@ export async function generarVeredictoIA(settings: AISettings, result: AnalysisR
   const data = await res.json()
   return data.verdict as string
 }
+
+export interface CloneSession {
+  token: string
+  authors: string[]
+  group_name: string | null
+  message_count: number
+}
+
+export class CloneSessionExpiredError extends Error {}
+
+export async function iniciarClonChat(file: File): Promise<CloneSession> {
+  const formData = new FormData()
+  formData.append("file", file)
+
+  const res = await fetch(`${API_URL}/clon-chat/iniciar`, {
+    method: "POST",
+    body: formData,
+  })
+
+  if (!res.ok) {
+    const error = await res.json().catch(() => null)
+    throw new Error(error?.detail ?? `Error ${res.status} al iniciar la sesion del clon`)
+  }
+
+  return res.json()
+}
+
+interface EnviarMensajeClonParams {
+  token: string
+  mensaje: string
+  settings: AISettings
+  hablarComo?: string | null
+}
+
+/** Consume el stream SSE de /clon-chat/mensaje y va llamando onChunk a medida
+ * que llegan fragmentos de texto. Tira CloneSessionExpiredError si el token
+ * ya no es valido, para que la UI lo distinga de un error generico. */
+export async function enviarMensajeClon(params: EnviarMensajeClonParams, onChunk: (text: string) => void): Promise<void> {
+  const res = await fetch(`${API_URL}/clon-chat/mensaje`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      token: params.token,
+      mensaje: params.mensaje,
+      provider: params.settings.provider,
+      api_key: params.settings.apiKey,
+      model: params.settings.model || undefined,
+      hablar_como: params.hablarComo || undefined,
+    }),
+  })
+
+  if (!res.ok || !res.body) {
+    const error = await res.json().catch(() => null)
+    const message = error?.detail ?? `Error ${res.status} al hablar con el clon`
+    if (res.status === 404) throw new CloneSessionExpiredError(message)
+    throw new Error(message)
+  }
+
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ""
+
+  while (true) {
+    const { value, done } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+
+    let boundary = buffer.indexOf("\n\n")
+    while (boundary !== -1) {
+      const frame = buffer.slice(0, boundary)
+      buffer = buffer.slice(boundary + 2)
+      boundary = buffer.indexOf("\n\n")
+
+      const eventLine = frame.split("\n").find((line) => line.startsWith("event: "))
+      const dataLine = frame.split("\n").find((line) => line.startsWith("data: "))
+      if (!eventLine || !dataLine) continue
+
+      const event = eventLine.slice("event: ".length)
+      const data = dataLine.slice("data: ".length)
+
+      if (event === "chunk") {
+        onChunk(JSON.parse(data) as string)
+      } else if (event === "error") {
+        throw new Error(JSON.parse(data) as string)
+      }
+    }
+  }
+}

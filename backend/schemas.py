@@ -106,3 +106,19 @@ class VeredictoIARequest(BaseModel):
 
 class VeredictoIAResponse(BaseModel):
     verdict: str
+
+
+class ClonIniciarResponse(BaseModel):
+    token: str
+    authors: list[str]
+    group_name: str | None = None
+    message_count: int
+
+
+class ClonMensajeRequest(BaseModel):
+    token: str
+    mensaje: str
+    provider: Literal["anthropic", "openai", "gemini", "groq"]
+    api_key: str
+    model: str | None = None
+    hablar_como: str | None = None

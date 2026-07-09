@@ -18,6 +18,7 @@ import ShareCard from "./components/ShareCard"
 import SectionNav from "./components/SectionNav"
 import CaseHero from "./components/CaseHero"
 import GroupDynamics from "./components/GroupDynamics"
+import GroupClone from "./components/GroupClone"
 import RevealSection from "./components/RevealSection"
 import { formatMembersSentence, formatShortDate, formatWeekdayName } from "./utils/format"
 import "./App.css"
@@ -132,7 +133,7 @@ function App() {
   useEffect(() => {
     if (!result) return
 
-    const sectionIds = ["veredicto", "playback", "timeline", "comparacion", "detalle"]
+    const sectionIds = ["veredicto", "playback", "timeline", "comparacion", "detalle", "clon"]
     const sections = sectionIds
       .map((id) => document.getElementById(id))
       .filter((element): element is HTMLElement => element !== null)
@@ -262,6 +263,7 @@ function App() {
                 { id: "timeline", label: "Timeline" },
                 { id: "comparacion", label: "Comparacion" },
                 { id: "detalle", label: "Detalle" },
+                { id: "clon", label: "Clon" },
               ]}
             />
 
@@ -366,6 +368,16 @@ function App() {
                   <h2>Tabla completa de sospechosos</h2>
                 </div>
                 <MembersTable members={result.members} />
+              </RevealSection>
+            </div>
+
+            <div className="results-grid" id="clon">
+              <RevealSection className="panel-section">
+                <div className="section-heading">
+                  <span className="section-kicker">Clon</span>
+                  <h2>Hablar con el grupo</h2>
+                </div>
+                <GroupClone file={file} />
               </RevealSection>
             </div>
           </section>
