@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Literal
 
+import numpy as np
+import ruptures as rpt
 from dateutil.relativedelta import relativedelta
 
 from parser import Message
@@ -285,16 +287,35 @@ def build_reactivation_leaders(messages: list[Message], daily_snapshots: list[Da
     return [ReactivationLeader(author=author, attempts=attempts) for author, attempts in leaders[:3]]
 
 
+def detect_changepoints(counts: list[int]) -> list[int]:
+    """Indices donde cambia el nivel medio de actividad (deteccion PELT, modelo l2).
+
+    Devuelve los limites de segmento (excluye el 0 inicial, incluye len(counts) al final).
+    """
+    n = len(counts)
+    if n < 4 or not any(counts):
+        return [n]
+
+    signal = np.array(counts, dtype=float)
+    penalty = max(float(np.var(signal)) * np.log(n), 1.0)
+    min_size = max(2, n // 15)
+    algo = rpt.Pelt(model="l2", min_size=min_size).fit(signal.reshape(-1, 1))
+    return algo.predict(pen=penalty)
+
+
 def build_phase_summary(daily_snapshots: list[DailySnapshot]) -> list[PhaseSummary]:
     if not daily_snapshots:
         return []
 
     total = max(sum(item.message_count for item in daily_snapshots), 1)
-    bucket = max(1, len(daily_snapshots) // 3)
-    phases: list[PhaseSummary] = []
+    counts = [item.message_count for item in daily_snapshots]
+    breakpoints = detect_changepoints(counts)
 
-    for index, start in enumerate(range(0, len(daily_snapshots), bucket)):
-        chunk = daily_snapshots[start:start + bucket]
+    phases: list[PhaseSummary] = []
+    start = 0
+    for end in breakpoints:
+        chunk = daily_snapshots[start:end]
+        start = end
         if not chunk:
             continue
         messages = sum(item.message_count for item in chunk)
@@ -322,9 +343,6 @@ def build_phase_summary(daily_snapshots: list[DailySnapshot]) -> list[PhaseSumma
                 description=description,
             )
         )
-
-        if index == 2:
-            break
 
     return phases
 
