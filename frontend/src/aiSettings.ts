@@ -1,4 +1,4 @@
-export type AIProvider = "anthropic" | "openai" | "gemini" | "groq"
+export type AIProvider = "anthropic" | "openai" | "gemini" | "groq" | "nvidia"
 
 export interface AISettings {
   provider: AIProvider

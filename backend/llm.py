@@ -11,6 +11,11 @@ DEFAULT_MODELS = {
     "openai": "gpt-4o-mini",
     "gemini": "gemini-2.5-flash-lite",
     "groq": "llama-3.3-70b-versatile",
+    # nvidia: probados a mano varios modelos grandes/nuevos del catalogo
+    # (llama-4-maverick, llama-3.3-70b, qwen3-next-80b) -- todos con timeout
+    # de 20-90s+ sin respuesta en la cuenta free, saturados de cola. mixtral
+    # 8x7b es el mas grande que respondio rapido y confiable (~2s).
+    "nvidia": "mistralai/mixtral-8x7b-instruct-v0.1",
 }
 
 
@@ -42,6 +47,10 @@ async def call_llm(provider: str, api_key: str, model: str | None, system_prompt
         )
     if provider == "gemini":
         return await _call_gemini(api_key, resolved_model, system_prompt, user_prompt)
+    if provider == "nvidia":
+        return await _call_openai_compatible(
+            "https://integrate.api.nvidia.com/v1/chat/completions", "NVIDIA", api_key, resolved_model, system_prompt, user_prompt
+        )
     raise LLMError(f"Proveedor de IA desconocido: {provider}")
 
 
@@ -187,6 +196,10 @@ async def stream_llm_chat(
         )
     elif provider == "gemini":
         stream = _stream_gemini(api_key, resolved_model, system_prompt, history)
+    elif provider == "nvidia":
+        stream = _stream_openai_compatible(
+            "https://integrate.api.nvidia.com/v1/chat/completions", "NVIDIA", api_key, resolved_model, system_prompt, history
+        )
     else:
         raise LLMError(f"Proveedor de IA desconocido: {provider}")
 

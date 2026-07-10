@@ -246,6 +246,18 @@ class BuildCloneSystemPromptTests(unittest.TestCase):
         self.assertIn("jerga EXACTA", prompt)
         self.assertIn("No inventes jerga generica", prompt)
 
+    def test_prompt_demands_spanish_output(self) -> None:
+        # Bug real: con NVIDIA (mixtral-8x7b) la ficha de estilo salio en
+        # ingles pese a que todo el chat de entrada es en castellano -- el
+        # prompt nunca forzaba el idioma de salida.
+        sample = [[Message(author="Ana", timestamp=datetime(2026, 1, 1), text="dale")]]
+
+        chat_prompt = build_clone_system_prompt(sample, None, "Los Pibes")
+        reading_system, _ = build_reading_pass_prompt(sample, None, "Los Pibes")
+
+        self.assertIn("castellano", chat_prompt)
+        self.assertIn("castellano", reading_system)
+
     def test_hablar_como_mode_names_the_member_and_disclaims_simulation(self) -> None:
         sample = [[Message(author="Ana", timestamp=datetime(2026, 1, 1), text="dale")]]
         prompt = build_clone_system_prompt(sample, "Ana", "Los Pibes")

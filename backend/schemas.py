@@ -89,7 +89,7 @@ class AnalysisResultOut(BaseModel):
 
 
 class VeredictoIARequest(BaseModel):
-    provider: Literal["anthropic", "openai", "gemini", "groq"]
+    provider: Literal["anthropic", "openai", "gemini", "groq", "nvidia"]
     api_key: str
     model: str | None = None
     tone: Literal["forense", "neutral", "bardero"] = "forense"
@@ -118,7 +118,7 @@ class ClonIniciarResponse(BaseModel):
 class ClonMensajeRequest(BaseModel):
     token: str
     mensaje: str
-    provider: Literal["anthropic", "openai", "gemini", "groq"]
+    provider: Literal["anthropic", "openai", "gemini", "groq", "nvidia"]
     api_key: str
     model: str | None = None
     hablar_como: str | None = None

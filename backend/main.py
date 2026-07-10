@@ -206,10 +206,12 @@ async def clon_chat_mensaje(payload: ClonMensajeRequest):
                 brief = await call_llm(payload.provider, payload.api_key, payload.model, reading_system, reading_user)
                 session.persona_briefs[mode_key] = brief
                 system_prompt = build_clone_system_prompt_from_brief(brief, mode_key, session.group_name)
-            except LLMError:
+                print(f"[DEBUG clon] reading pass OK, brief:\n{brief}\n")  # ponytail: diagnostico temporal, sacar despues
+            except LLMError as exc:
                 session.persona_brief_failed.add(mode_key)
                 sample = sample_style_messages(session.messages, mode_key)
                 system_prompt = build_clone_system_prompt(sample, mode_key, session.group_name)
+                print(f"[DEBUG clon] reading pass FALLO ({exc}), usando fallback")  # ponytail: diagnostico temporal, sacar despues
 
         collected: list[str] = []
         try:

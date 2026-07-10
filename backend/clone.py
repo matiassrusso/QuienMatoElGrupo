@@ -60,6 +60,11 @@ READING_PASS_TOKEN_BUDGET = {
     "gemini": 60000,
     "anthropic": 20000,
     "openai": 15000,
+    # NVIDIA build.nvidia.com no publica TPM, solo ~40 req/min por key -- pero
+    # el default (mixtral-8x7b, elegido por ser el mas grande que responde
+    # rapido en el free tier, ver DEFAULT_MODELS en llm.py) tiene ventana de
+    # ~32k tokens, asi que el limite real ahi es el contexto del modelo.
+    "nvidia": 20000,
 }
 DEFAULT_READING_PASS_TOKEN_BUDGET = 5000  # provider desconocido: el mas conservador
 
@@ -239,7 +244,14 @@ def sample_for_reading_pass(messages: list[Message], hablar_como: str | None, to
     sale del presupuesto de tokens del provider elegido (READING_PASS_TOKEN_BUDGET),
     no de una constante fija -- asi se adapta a Groq (muy ajustado) o Gemini
     (mucho mas margen) sin romper ninguno de los dos."""
-    max_chars = token_budget * 4  # heuristica gruesa (sin tokenizer real por provider): ~4 caracteres por token
+    # Antes se asumian ~4 caracteres/token (generico para texto en ingles).
+    # Con datos reales (chat de WhatsApp en castellano, emojis/acentos/jerga)
+    # se midio ~1.75 char/token -- mas del doble de denso. Causaba que la
+    # pasada de lectura mandara ~2x mas tokens de los presupuestados y
+    # rompiera el limite real del provider (confirmado con NVIDIA: request
+    # de 45666 tokens contra un limite de 32768, con budget nominal de solo
+    # 20000). 2 char/token deja margen real sobre el valor medido.
+    max_chars = token_budget * 2
     max_messages = max(WINDOW_SIZE, token_budget // 6)  # ~6 tokens promedio por mensaje corto
     return sample_style_messages(messages, hablar_como, max_messages=max_messages, max_chars=max_chars)
 
@@ -264,7 +276,8 @@ _CONVERSATION_RULE = (
     "A partir de aca vas a charlar en vivo con una persona real. Respondele de forma directa y coherente a lo que "
     "te dice -- no ignores el mensaje ni sueltes frases sacadas de lo de arriba sin relacion con lo que te "
     "preguntan. Usa mensajes cortos, estilo WhatsApp (1-3 lineas), con el tono/vocabulario/muletillas que se ven "
-    "arriba, pero conversando de verdad sobre lo que te dicen."
+    "arriba, pero conversando de verdad sobre lo que te dicen. Respondes SIEMPRE en castellano rioplatense (el "
+    "idioma del chat de arriba), nunca en ingles."
 )
 
 # Bug real detectado por el usuario: le pidio que le resuelva un ejercicio de
@@ -319,7 +332,8 @@ def build_reading_pass_prompt(
         "que usan, apodos, chistes internos o referencias que se repiten, muletillas, tono general (formal/informal, "
         "que tipo de humor). Se concreto y especifico de ESTE grupo -- nada de generalidades tipo 'usan jerga "
         "informal', dame ejemplos reales de palabras/frases que aparecen en los fragmentos. No resumas de que "
-        "hablan (el contenido), solo COMO hablan (el estilo)."
+        "hablan (el contenido), solo COMO hablan (el estilo). Escribi la ficha en castellano rioplatense, "
+        "nunca en ingles, sin importar en que idioma este el resto de estas instrucciones."
     )
 
     if hablar_como:

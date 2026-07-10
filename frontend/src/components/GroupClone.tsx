@@ -7,6 +7,7 @@ const PROVIDER_INFO: Record<AIProvider, { label: string; keyPlaceholder: string;
   openai: { label: "OpenAI (GPT)", keyPlaceholder: "sk-...", modelPlaceholder: "gpt-4o-mini" },
   gemini: { label: "Google Gemini (gratis)", keyPlaceholder: "AIza...", modelPlaceholder: "gemini-2.5-flash-lite" },
   groq: { label: "Groq (gratis)", keyPlaceholder: "gsk_...", modelPlaceholder: "llama-3.3-70b-versatile" },
+  nvidia: { label: "NVIDIA Build (gratis)", keyPlaceholder: "nvapi-...", modelPlaceholder: "mistralai/mixtral-8x7b-instruct-v0.1" },
 }
 
 interface ChatMessage {
