@@ -1579,6 +1579,18 @@ body::after {
   stroke-width: 2px;
 }
 
+.interaction-graph-node.is-interactive {
+  cursor: grab;
+}
+
+.interaction-graph-node.is-interactive:active {
+  cursor: grabbing;
+}
+
+.interaction-graph-node.is-hot circle {
+  fill: var(--accent-strong);
+}
+
 .interaction-graph-node text {
   font-family: "Space Mono", ui-monospace, monospace;
   font-size: 11px;
