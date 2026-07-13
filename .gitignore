@@ -22,3 +22,6 @@ diagnostico-clon-ia.md
 PRIVATE_README.md
 .impeccable/
 .git-private/
+
+# Obsidian vault config (para trabajar este proyecto desde AI Brain)
+.obsidian/
