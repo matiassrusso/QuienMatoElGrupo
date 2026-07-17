@@ -6,7 +6,6 @@ from datetime import date, datetime, timedelta
 from typing import Literal
 
 import numpy as np
-import ruptures as rpt
 from dateutil.relativedelta import relativedelta
 
 from interaction_graph import InteractionGraph, build_interaction_graph
@@ -301,8 +300,38 @@ def detect_changepoints(counts: list[int]) -> list[int]:
     signal = np.array(counts, dtype=float)
     penalty = max(float(np.var(signal)) * np.log(n), 1.0)
     min_size = max(2, n // 15)
-    algo = rpt.Pelt(model="l2", min_size=min_size).fit(signal.reshape(-1, 1))
-    return algo.predict(pen=penalty)
+
+    prefix = np.concatenate(([0.0], np.cumsum(signal)))
+    prefix_sq = np.concatenate(([0.0], np.cumsum(signal**2)))
+
+    def segment_cost(s: int, t: int) -> float:
+        total = prefix[t] - prefix[s]
+        total_sq = prefix_sq[t] - prefix_sq[s]
+        return total_sq - total * total / (t - s)
+
+    # ponytail: exact O(n^2) penalized-segmentation DP (equivalent to PELT's
+    # l2-cost result, minus its pruning speedup) instead of the `ruptures`
+    # package, whose C extension has no Windows wheel for Python 3.14 and
+    # needs MSVC to build from source. Revisit if daily-series length grows
+    # past a few thousand days and this becomes the bottleneck.
+    best_cost = [0.0] + [float("inf")] * n
+    prev_cp = [0] * (n + 1)
+    for t in range(min_size, n + 1):
+        for s in range(0, t - min_size + 1):
+            if best_cost[s] == float("inf"):
+                continue
+            cost = best_cost[s] + segment_cost(s, t) + (penalty if s > 0 else 0.0)
+            if cost < best_cost[t]:
+                best_cost[t] = cost
+                prev_cp[t] = s
+
+    breakpoints: list[int] = []
+    t = n
+    while t > 0:
+        breakpoints.append(t)
+        t = prev_cp[t]
+    breakpoints.reverse()
+    return breakpoints
 
 
 def build_phase_summary(daily_snapshots: list[DailySnapshot]) -> list[PhaseSummary]:
