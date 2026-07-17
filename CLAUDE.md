@@ -17,7 +17,7 @@ If a session is drifting sin acercarse a eso, nudge me back: "¿Esto suma credib
 3. Implementación en `backend` (FastAPI) y/o `frontend` (React/TS)
 4. Verificación visual con Playwright (`webapp-testing` skill) antes de dar por cerrado un cambio de UI
 5. Tests en verde, build/lint verdes
-6. Deploy: push a `main` (público) → Railway + Vercel. Notas privadas (`PRODUCT.md`, `DESIGN.md`, `PROJECT_STATUS.md`, etc.) se commitean aparte en `.git-private`
+6. Deploy: push a `main` (público) → Render + Vercel. Notas privadas (`PRODUCT.md`, `DESIGN.md`, `PROJECT_STATUS.md`, etc.) se commitean aparte en `.git-private`
 
 ## Key People
 

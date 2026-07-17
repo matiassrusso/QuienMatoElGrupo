@@ -14,7 +14,7 @@ Activity analytics for WhatsApp groups — find out who went quiet and when, fro
 ## Demo en producción / Live demo
 
 - **App:** https://quien-mato-el-grupo.vercel.app/
-- **API:** https://quienmatoelgrupo-production.up.railway.app
+- **API:** https://quien-mato-el-grupo-api.onrender.com
 
 ## Cómo funciona / How it works
 
